@@ -1,0 +1,119 @@
+
+
+/* General Body Style */
+body {
+    font-family: 'Poppins', sans-serif;
+    margin: 0;
+    padding: 0;
+    background-color: var(--light-color);
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+}
+
+
+
+/* Scanner Section */
+.scanner-container {
+    text-align: center;
+    margin-top: 6%;
+}
+
+.scanner-card {
+    position: relative;
+    width: 50vh;
+    align-content: center;
+    height: 27vh;
+    background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+    border-radius: 15px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+    margin: 20px auto;
+    overflow: hidden;
+    color: #fff;
+}
+
+/* Scan Animation */
+.scanner-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 102, 0, 0.4);
+    transform: translateY(-100%);
+    animation: scanAnimation 2s infinite;
+}
+
+@keyframes scanAnimation {
+    0% {
+        transform: translateY(-100%);
+    }
+
+    50% {
+        transform: translateY(100%);
+    }
+
+    100% {
+        transform: translateY(-100%);
+    }
+}
+
+.scanner-instructions {
+    font-size: 1.8rem;
+    font-weight: 600;
+    text-decoration:underline;
+    margin: 15px 0;
+    color: var(--dark-color);
+}
+
+.scanner-text {
+    font-size: 1.4rem;
+    color: #fff;
+    margin-top: 20px;
+}
+
+/* Button Style */
+.btn-container {
+    margin-top: 20px;
+}
+
+.action-button {
+    display: inline-block;
+    background-color: var(--dark-color);
+    color: #fff;
+    padding: 12px 24px;
+    font-size: 1.1rem;
+    font-weight: 600;
+    border-radius: 30px;
+    transition: all 0.3s ease;
+    text-decoration: none;
+}
+
+.action-button:hover {
+    background-color: var(--secondary-color);
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .scanner-container {
+        margin-top: 30px;
+    }
+
+    .scanner-card {
+        width: 200px;
+        height: 120px;
+    }
+
+    .scanner-instructions {
+        font-size: 1.2rem;
+    }
+
+    .scanner-text {
+        font-size: 1rem;
+    }
+
+    .btn-container {
+        margin-top: 10px;
+    }
+}

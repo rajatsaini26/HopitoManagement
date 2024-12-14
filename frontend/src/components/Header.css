@@ -1,0 +1,130 @@
+:root {
+    --primary-color: #007bff;
+    --secondary-color: #28a745;
+    --dark-color: #343a40;
+    --scan-border-color: #ff6600;
+    --light-color: #f4f7fc;
+    width: 100%;
+    
+}
+
+/* Navbar Style */
+.navbar {
+    background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+    padding: 10px 20px;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        width: 100%;
+}
+.brandLogo{
+    transition: transform 0.3s ease;
+}
+.brandLogo:hover {
+    transform: scale(1.1);
+    cursor:pointer;
+}
+.nav-link {
+    color: white;
+    cursor: pointer;
+    padding: 5px 10px;
+    transition: color 0.2s, background-color 0.2s;
+}
+.nav-links {
+    display: flex;
+    gap: 15px;
+    list-style: none;
+    align-items: center;
+    margin: 0;
+    padding: 0;
+}
+
+.nav-link:hover {
+    color: #ffcc00;
+    border-radius: 8px;
+    background-color: var(--dark-color) ;
+    /* Change color on hover */
+}
+
+
+.username {
+    display: flex;
+    align-items: center;
+    /* Center the username and arrow */
+}
+
+.username:hover .arrow {
+    transform: rotate(180deg);
+    /* Rotate arrow on hover */
+}
+
+.dropdown {
+    position: absolute;
+    /* Position dropdown relative to navbar */
+    background-color: white;
+    /* Dropdown background color */
+    border: 1px solid #ccc;
+    /* Border for dropdown */
+    border-radius: 10%;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    /* Shadow for dropdown */
+    z-index: 1000;
+    transition: max-height 0.3s ease-out;
+    /* Space between dropdown and navbar */
+    margin-left: 23%;
+    margin-top: 15%;
+}
+
+.dropdown-item {
+    display: block;
+    /* Make dropdown items block elements */
+    padding: 10px 20px;
+    /* Padding for dropdown items */
+    color: #333;
+    /* Text color for dropdown items */
+    text-decoration: none;
+    /* Remove underline */
+    border-radius: 10%;
+        
+    transition: background-color 0.3s;
+    /* Smooth background transition */
+}
+
+.dropdown-item:hover {
+    background-color: #f0f0f0;
+    border-radius: 10%;
+    /* Change background on hover */
+}
+
+.user-btn {
+    background-color: white;
+    /* Green */
+    border: none;
+    color: #4CAF50;
+    font-weight: bold;
+    padding: 8px 25px;
+    text-align: center;
+    text-decoration: none;
+    display: inline-block;
+    font-size: 16px;
+    margin: 4px 2px;
+    cursor: pointer;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    transition: all 0.3s ease;
+}
+
+.user-btn:hover {
+    background-color: #f0f0f0;
+    transform: translateY(-2px);
+    color:black;
+}
+
+.user-btn:active {
+    transform: translateY(1px);
+}
+
+.user-btn:focus {
+    outline: none;
+}
