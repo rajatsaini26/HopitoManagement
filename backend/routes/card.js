@@ -150,7 +150,7 @@ router.post('/issue', async (req, res) => {
 });
 
 // API to run a Python script
-app.post('/scanner', (req, res) => {
+router.post('/scanner', (req, res) => {
     const input = req.body; // Capture input from the client
 
     // Spawn a Python process
