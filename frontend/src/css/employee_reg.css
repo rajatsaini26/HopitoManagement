@@ -76,3 +76,26 @@ input[type="number"]::-webkit-inner-spin-button {
 .registration-button:hover {
     background-color: #45a049;
 }
+
+.form-group select {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 1rem;
+    background-color: #495057; /* Matches the dark theme of the container */
+    color: white; /* White text for contrast */
+    appearance: none; /* Removes default dropdown arrow (for customization if needed) */
+    cursor: pointer;
+}
+
+.form-group select:focus {
+    border-color: #4CAF50; /* Matches the button hover color */
+    outline: none; /* Removes default focus outline */
+    box-shadow: 0 0 5px rgba(76, 175, 80, 0.75); /* Adds a green focus glow */
+}
+
+.form-group option {
+    background-color: #495057; /* Background for dropdown options */
+    color: white; /* Consistent text color for options */
+}

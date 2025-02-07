@@ -1,66 +1,68 @@
 import React, { useState, useEffect } from "react";
-import axios from 'axios';
+import axios from "axios";
 import "../css/employee_reg.css";
-import { jwtDecode } from "jwt-decode";
+import SuccessMessage from "../components/Sucess";
+import UnsuccessfulModal from "../components/Unsuccess";
+import utils from "../components/Utils";
 
 const Registration = () => {
+    const [ShowSuccess, setShowSuccess] = useState(false);
+    const [showUnsuccessModal, setshowUnsuccessModal] = useState(false);
+    const [message, setMessage] = useState();
     const [mobile, setMobile] = useState("");
     const [name, setName] = useState("");
     const [address, setAddress] = useState("");
     const [password, setPassword] = useState("");
     const [pin, setPin] = useState("");
+    const [role, setRole] = useState("Employee");
 
     const handleSubmit = (event) => {
         event.preventDefault();
-        console.log("Mobile:", mobile);
-        console.log("Name:", name);
-        console.log("Address:", address);
-        console.log("Password:", password);
-        console.log("PIN:", pin);
-        // Add your registration logic here
     };
 
     useEffect(() => {
-        const isTokenExpired = () => {
-            const token = localStorage.getItem('jwtToken');
-            if (!token) return true;
-            const decoded = jwtDecode(token, { complete: true });
-            const currentTime = Date.now() / 1000; // Current time in seconds
-
-        };
-
-        if (isTokenExpired()) {
-            localStorage.removeItem('jwtToken');
-            window.location.href = '/'; // Redirect to login if the token is expired
-        }
+          utils.checkLoginCredentials();
+      
     }, []);
 
     async function handleRegistration() {
+        
         const body = {
             mobile: mobile,
             name: name,
             address: address,
             password: password,
             otp: pin,
+            role: role,
         };
 
         try {
-            const response = await axios.post('http://localhost:5000/api/auth/register', body, {
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-            });
-
-            console.log('Success:', response.data); // Process the response data
+            const response = await axios.post(
+                "http://localhost:5000/api/auth/register",
+                body,
+                {
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                }
+            );
+            setMessage(response.data.message);
+            setShowSuccess(true);
+            window.location.href = "/admin";
+            console.log("Success:", response.data); // Process the response data
         } catch (error) {
-            console.error('Error:', error.response?.data || error.message); // Log the error
+            setMessage(error.message);
+            setshowUnsuccessModal(true);
+            console.error("Error:", error.response?.data || error.message); // Log the error
         }
     }
 
     return (
         <div className="container">
             <div className="registration-container">
-                <h1 className="registration-title"><i>Employee Registration</i></h1>
+                <h1 className="registration-title">
+                    <i>Employee Registration</i>
+                </h1>
                 <form className="registration-form" onSubmit={handleSubmit}>
                     <div className="form-group">
                         <label>Mobile Number</label>
@@ -111,16 +113,48 @@ const Registration = () => {
                     <div className="form-group">
                         <label>PIN</label>
                         <input
-                            type="text"
+                            type="number"
                             placeholder="PIN"
                             value={pin}
+                            maxLength={4}
                             onChange={(e) => setPin(e.target.value)}
-                            maxLength={6}
                             required
                         />
                     </div>
-                    <button type="submit" className="registration-button" onClick={handleRegistration}>Register</button>
+                    <div className="form-group">
+                        <label>Role</label>
+                        <select
+                            value={role}
+                            onChange={(e) => setRole(e.target.value)}
+                            required
+                        >
+                            <option value="" disabled>
+                                Select Role
+                            </option>
+                            <option value="Manager">Manager</option>
+                            <option value="Employee">Employee</option>
+                        </select>
+                    </div>
+                    <button
+                        type="submit"
+                        className="registration-button"
+                        onClick={handleRegistration}
+                    >
+                        Register
+                    </button>
                 </form>
+                {ShowSuccess && message && (
+                    <SuccessMessage
+                        message={message}
+                        onClose={() => setShowSuccess(false)}
+                    />
+                )}
+                {showUnsuccessModal && message && (
+                    <UnsuccessfulModal
+                        message={message}
+                        onClose={() => setshowUnsuccessModal(false)}
+                    />
+                )}
             </div>
         </div>
     );

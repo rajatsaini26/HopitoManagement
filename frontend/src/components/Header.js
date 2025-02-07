@@ -1,56 +1,84 @@
 import React, { useEffect, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import "./Header.css";
 import logo from "../assests/logo.svg";
-import { Link , useNavigate} from "react-router-dom";
+import { Logout } from "./API";
 
 const Header = () => {
+    const [role, setRole] = useState(localStorage.getItem("role") || "");
+    const [user, setUser] = useState(localStorage.getItem("user") || "");
     const [isDropdownOpen, setDropdownOpen] = useState(false);
-    // const [user, setUser] = useState();
-    // const [userID, setuserID] = useState();
-    let user = (localStorage.getItem('user'));
-    let id = (localStorage.getItem('userID'));
+
     const location = useLocation();
     const navigate = useNavigate();
-    useEffect(()=>{
-        // setUser(JSON.stringify);
-        // setuserID(JSON.stringify));
-    },[]);
-    const ActiveScreen =  location.pathname ;
+    const activeScreen = location.pathname;
+
+    useEffect(() => {
+        setRole(localStorage.getItem("role") || "");
+        setUser(localStorage.getItem("user") || "");
+    }, []);
 
     const toggleDropdown = () => {
-        setDropdownOpen((prevState)=>!prevState);
+        setDropdownOpen((prev) => !prev);
     };
 
-    const JumpToScanner = () =>{
-        navigate('/scan');
-    }
-    return (
-        <div >
-        {ActiveScreen!=="/" &&(
-            <nav className="navbar">
-                <img className="brandLogo" src={logo} onClick={JumpToScanner} alt="Company Logo" width="120" height="60" />
-                <div className="nav-links">
-                    {ActiveScreen!=="/scan" && (
-                        <button className="user-btn" onClick={JumpToScanner}>
-                            Scan Card
-                        </button>
-                    )}
-                        
-                        <button className="user-btn" onClick={toggleDropdown}>
-                            {user}
-                        </button>
-                        
-                    {isDropdownOpen && (
-                        <div className={`dropdown ${isDropdownOpen ? 'open' : ''}`}>
-                            <Link to="/profile" className="dropdown-item">Profile</Link>
-                            <a href="/logout" className="dropdown-item">Logout</a>
-                        </div>
-                    )}
-                </div>
+    const jumpToScanner = () => {
+        navigate("/scan");
+    };
 
-            </nav>
-        )}
+    return (
+        <div>
+            {/* General navbar for non-login/admin pages */}
+            {activeScreen !== "/" && role !== "Admin" && (
+                <nav className="navbar">
+                    <img
+                        className="brandLogo"
+                        src={logo}
+                        onClick={jumpToScanner}
+                        alt="Company Logo"
+                        width="120"
+                        height="60"
+                    />
+                    <div className="nav-links">
+                        {activeScreen !== "/scan" && activeScreen !== "/register" && (
+                            <button className="user-btn" onClick={jumpToScanner}>
+                                Scan Card
+                            </button>
+                        )}
+                        {activeScreen !== "/register" && user && (
+                            <button className="user-btn" onClick={toggleDropdown}>
+                                {user}
+                            </button>
+                        )}
+                        {isDropdownOpen && (
+                            <div className="dropdown open">
+                                <a onClick={Logout} className="dropdown-item">
+                                    Logout
+                                </a>
+                            </div>
+                        )}
+                    </div>
+                </nav>
+            )}
+
+            {/* Admin-specific navbar */}
+            {role === "Admin" && (
+                <nav className="navbar">
+                    <img
+                        className="brandLogo"
+                        src={logo}
+                        onClick={jumpToScanner}
+                        alt="Company Logo"
+                        width="120"
+                        height="60"
+                    />
+                    <div className="nav-links">
+                        <button className="user-btn" onClick={Logout}>
+                            Logout
+                        </button>
+                    </div>
+                </nav>
+            )}
         </div>
     );
 };

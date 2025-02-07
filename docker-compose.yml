@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "5000:5000"
+      - "8080:8080"
+    volumes:
+      - ./backend:/usr/src/app  # Bind mount for live updates
+      - /usr/src/app/node_modules  # Ignore node_modules for performance
+      - /dev/ttyS3:/dev/ttyS3  # Map the COM port (RFID device) to the container
+    environment:
+      - NODE_ENV=development  # Set to development for hot-reload
+      - DB_HOST=mysql  # Point to the MySQL service name
+      - DB_USER=root
+      - DB_PASSWORD=nctladnun
+      - DB_NAME=hopito_db
+      - DB_PORT=3306
+    command: npm run dev  # Use nodemon for hot-reloading
+    depends_on:
+      - mysql  # Ensure MySQL starts before backend
+    networks:
+      - mynetwork
+
+  mysql:
+    image: mysql:8
+    environment:
+      MYSQL_ROOT_PASSWORD: nctladnun
+      MYSQL_DATABASE: HOPITO
+    ports:
+      - "3306:3306"
+    networks:
+      - mynetwork
+    volumes:
+      - mysql_data:/var/lib/mysql  # Persist MySQL data across restarts
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/usr/src/app  # Bind mount for live updates
+      - /usr/src/app/node_modules  # Ignore node_modules for performance
+    environment:
+      - NODE_ENV=development  # Set to development for hot-reload
+    command: npm start  # Use react-scripts or similar for hot-reload
+    depends_on:
+      - backend
+    networks:
+      - mynetwork
+
+networks:
+  mynetwork:
+    driver: bridge
+
+volumes:
+  mysql_data:

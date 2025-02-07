@@ -6,27 +6,23 @@ require('dotenv').config();
 const router = express.Router();
 
 // Register Game
-// NOTE METHOD -POST ,   BODY-> ID, NAME, CHARGE, SESSION 
+// NOTE METHOD -POST ,   BODY-> ID, NAME, CHARGE, SESSION, discount 
 
 router.post('/add', async (req, res) => {
-    const { name, charge, session } = req.body;
-
+    const { name, charge, session, discount } = req.body;
+    console.log(req.body);
     try {
-        if ((!name || charge == null )&& !session ) {
+        if (!name || charge == null  ) {
             return res.status(400).json({ error: 'Game name and charge are required.' });
         }
 
-        if (typeof charge !== 'number') {
-            return res.status(400).json({ error: 'Charge must be a number.' });
-        }
-
-        const query = 'INSERT INTO games (Name, Charge, session_time) VALUES (?, ?, ?)';
-        const [results] = await pool.query(query, [name, charge, session]); // No need for .promise() here
+        const query = 'INSERT INTO Games (GameName, Charge, SessionTime, Discount) VALUES (?, ?, ?, ?)';
+        const [results] = await pool.query(query, [name, charge, session, discount ]); // No need for .promise() here
 
         res.status(201).json({
             message: 'Game added successfully.',
             gameId: results.insertId,
-            time: session/1000
+            time: session
         });
     } catch (error) {
         console.error('Error adding game:', error);
@@ -37,7 +33,7 @@ router.post('/add', async (req, res) => {
 // Update Game
 // NOTE METHOD - PUT,   BODY-> ID & updating field 
 router.put('/update', async (req, res) => {
-    const { id, name, charge, session } = req.body; // Get the game ID and new details from the request body
+    const { id, name, charge, session,discount } = req.body; // Get the game ID and new details from the request body
 
     try {
         // Validate input
@@ -54,22 +50,26 @@ router.put('/update', async (req, res) => {
         const values = [];
 
         if (name) {
-            updates.push('Name = ?');
+            updates.push('GameName = ?');
             values.push(name);
         }
         if(session){
-            updates.push('session_time=?');
+            updates.push('SessionTime=?');
             values.push(session);
         }
         if (charge != null) {
             updates.push('Charge = ?');
             values.push(charge);
         }
+        if (discount != null) {
+            updates.push('Discount = ?');
+            values.push(discount);
+        }
 
         // Add the game ID to the values for the WHERE clause
         values.push(id);
 
-        const query = `UPDATE games SET ${updates.join(', ')} WHERE GameID = ?`;
+        const query = `UPDATE Games SET ${updates.join(', ')} WHERE GameID = ?`;
         const [results] = await pool.query(query, values);
 
         if (results.affectedRows === 0) {
@@ -114,5 +114,58 @@ router.delete('/delete', async (req, res) => {
     }
 });
 
+router.get('/gamedetails', async (req, res) => {
+    const { id } = req.query;
+    try {
+        if (!id || id == null  ) {
+            return res.status(400).json({ error: 'Game ID are required.' });
+        }
+        const results = await pool.query('SELECT * FROM Games WHERE GameID=?',[id]); // No need for .promise() here
+        const game = results[0][0]; // ✅ Accessing the first element correctly
+        console.log(game);
+        res.status(200).json({
+            message: 'Game found.',
+            GameID: game.GameID,
+            Name: game.GameName,
+            Charge: game.Charge,
+            Session: game.SessionTime,
+            Discount: game.Discount
+        });
+    } catch (error) {
+        console.error('Error adding game:', error);
+        res.status(500).json({ error: 'An unexpected error occurred.', details: error.message });
+    }
+});
+
+router.get("/gameList", async (req, res) => {
+    try {
+        const [gameList] = await pool.query("SELECT * FROM Games");
+        console.log(gameList);
+
+        if (!gameList || gameList.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "No Games found",
+                status: "10003",
+                employees: [],
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "Game list retrieved successfully",
+            status: "10001",
+            games: gameList,
+        });
+
+    } catch (error) {
+        console.error("Error retrieving employees:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error",
+            status: "10005",
+        });
+    }
+});
 
 module.exports = router;

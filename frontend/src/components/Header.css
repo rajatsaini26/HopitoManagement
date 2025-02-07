@@ -1,16 +1,16 @@
-:root {
-    --primary-color: #007bff;
-    --secondary-color: #28a745;
+/* :root {
+    --primary-color: #c80ea3;
+    --secondary-color: #16359b;
     --dark-color: #343a40;
     --scan-border-color: #ff6600;
     --light-color: #f4f7fc;
     width: 100%;
     
-}
+} */
 
 /* Navbar Style */
 .navbar {
-    background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+    background: linear-gradient(160deg, var(--primary-color), var(--secondary-color));
     padding: 10px 20px;
         box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
         display: flex;
@@ -60,7 +60,7 @@
 }
 
 .dropdown {
-    position: absolute;
+    position:absolute;
     /* Position dropdown relative to navbar */
     background-color: white;
     /* Dropdown background color */
@@ -72,8 +72,7 @@
     z-index: 1000;
     transition: max-height 0.3s ease-out;
     /* Space between dropdown and navbar */
-    margin-left: 23%;
-    margin-top: 15%;
+    top: 60px;
 }
 
 .dropdown-item {

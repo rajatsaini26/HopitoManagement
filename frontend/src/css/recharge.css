@@ -1,66 +1,79 @@
+/* FORM CONTAINER */
 .form-container {
     max-width: 600px;
-    height: 60%;
     margin: 30px auto;
     padding: 20px;
-    background-color: #343a40;
-    /* Replace with your theme's primary color */
+    background-color: #2c2f33;
     border-radius: 8px;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
 }
 
+/* FORM TITLE */
 .form-title {
     text-align: center;
     margin-bottom: 20px;
-    color: white;
-    /* Replace with your theme's text color */
+    color: #ffffff;
+    font-size: 22px;
 }
 
-.event-form {
-    display: flex;
-    flex-direction: column;
+/* EMPLOYEE NAME */
+.emp-name {
+    text-align: center;
+    font-size: 18px;
+    color: #ff5722;
+    font-weight: bold;
+    text-decoration: underline;
 }
 
+/* FORM GROUPS */
 .form-group {
     margin-bottom: 15px;
 }
 
+/* LABELS */
 .form-group label {
     display: block;
     font-weight: bold;
     margin-bottom: 5px;
+    color: #ffffff;
 }
 
+/* INPUTS */
 .form-input {
     width: 100%;
-    padding: 10px;
-    margin-bottom: 5px;
-    border: 1px solid white;
-    border-radius: 4px;
+    padding: 12px;
+    font-size: 16px;
+    border-radius: 5px;
+    transition: 0.3s;
 }
 
-.name-fields,
-.phone-fields {
-    display: flex;
-    gap: 10px;
+/* INTERACTIVE FIELDS */
+.form-input:not([readonly]) {
+    background-color: #ffffff;
+    color: #000;
+    border: 1px solid #ccc;
+    cursor: text;
 }
 
-.radio-group {
-    display: flex;
-    gap: 15px;
+/* NON-INTERACTIVE FIELDS */
+.form-input.readonly {
+    background-color: #444;
+    color: #bbb;
+    border: 1px solid #666;
+    cursor: not-allowed;
+    font-weight: bold;
 }
 
+/* BUTTON */
 .form-submit-button {
     background-color: #ff5722;
-    /* Replace with your theme's button color */
     color: #ffffff;
-    padding: 10px 20px;
+    font-size: 16px;
+    padding: 12px;
     border: none;
-    border-radius: 4px;
+    border-radius: 5px;
     cursor: pointer;
-}
-
-.form-submit-button:hover {
-    background-color: #e64a19;
-    /* Replace with your theme's hover color */
+    transition: 0.3s;
+    width: 100%;
+    font-weight: bold;
 }
