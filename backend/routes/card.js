@@ -5,6 +5,7 @@ const rateLimit = require("express-rate-limit");
 const helmet = require("helmet");
 const validator = require("validator");
 const xss = require("xss");
+const { sensitiveRateLimit } = require('../middleware/rateLimit');
 require("dotenv").config();
 
 const router = express.Router();
@@ -26,6 +27,7 @@ const financialRateLimit = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
+
 
 // Apply rate limiting and security headers
 router.use(cardRateLimit);
