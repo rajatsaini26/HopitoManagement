@@ -4,55 +4,63 @@ services:
   backend:
     build: ./backend
     ports:
-      - "5000:5000"
-      - "8080:8080"
+      - "5001:5000"
+      - "8080:8080"  # if using WebSocket
     volumes:
-      - ./backend:/usr/src/app  # Bind mount for live updates
-      - /usr/src/app/node_modules  # Ignore node_modules for performance
-      - /dev/ttyS3:/dev/ttyS3  # Map the COM port (RFID device) to the container
-    environment:
-      - NODE_ENV=development  # Set to development for hot-reload
-      - DB_HOST=mysql  # Point to the MySQL service name
-      - DB_USER=root
-      - DB_PASSWORD=nctladnun
-      - DB_NAME=hopito_db
-      - DB_PORT=3306
-    command: npm run dev  # Use nodemon for hot-reloading
+      - ./backend:/usr/src/app
+      - /usr/src/app/node_modules
+      - /dev/ttyS3:/dev/ttyS3  # only on Linux
+    env_file:
+      - .env
     depends_on:
-      - mysql  # Ensure MySQL starts before backend
+      mysql:
+        condition: service_healthy
     networks:
-      - mynetwork
-
-  mysql:
-    image: mysql:8
+      - app-network
+    restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: nctladnun
-      MYSQL_DATABASE: HOPITO
-    ports:
-      - "3306:3306"
-    networks:
-      - mynetwork
-    volumes:
-      - mysql_data:/var/lib/mysql  # Persist MySQL data across restarts
+      DB_HOST: host.docker.internal
+      DB_PORT: 3307
+      DB_USER: root
+      DB_PASSWORD: nctladnun
+    
 
   frontend:
     build: ./frontend
     ports:
-      - "3000:3000"
+      - "3001:3000"
     volumes:
-      - ./frontend:/usr/src/app  # Bind mount for live updates
-      - /usr/src/app/node_modules  # Ignore node_modules for performance
-    environment:
-      - NODE_ENV=development  # Set to development for hot-reload
-    command: npm start  # Use react-scripts or similar for hot-reload
+      - ./frontend:/usr/src/app
+      - /usr/src/app/node_modules
+    env_file:
+      - .env
     depends_on:
       - backend
     networks:
-      - mynetwork
+      - app-network
 
-networks:
-  mynetwork:
-    driver: bridge
+  mysql:
+    image: mysql:8
+    restart: always
+    ports:
+      - "3307:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: nctladnun
+      MYSQL_DATABASE: hopito_db
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 
 volumes:
   mysql_data:
+
+networks:
+  app-network:
+    driver: bridge

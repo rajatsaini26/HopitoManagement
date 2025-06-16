@@ -4,7 +4,7 @@ import PinConfirmationModal from "../components/pinModal";
 import SuccessMessage from "../components/Sucess";
 import UnsuccessfulModal from "../components/Unsuccess";
 import Constants from "../components/Constants";
-import "../css/recharge.css"; // Import the updated CSS
+import "../css/recharge.css"; 
 import utils from "../components/Utils";
 
 const Recharge = () => {
@@ -19,6 +19,7 @@ const Recharge = () => {
   const [balance, setBalance] = useState(0);
   const [rechargeAmount, setRechargeAmount] = useState(500);
   const [paymentMethod, setPaymentMethod] = useState("CASH");
+  const [utr, setUTR] = useState();
 
   useEffect(() => {
     try {
@@ -46,7 +47,7 @@ const Recharge = () => {
   }, []);
 
   const validateInputs = () => {
-    if (!userID || !card || !pin) {
+    if (!userID || !card || !pin || (paymentMethod=="ONLINE" && !utr )) {
       setMessage("Missing inputs");
       setShowUnsuccessModal(true);
       return false;
@@ -63,7 +64,7 @@ const Recharge = () => {
     if (!validateInputs()) return false;
 
     try {
-      const body = { card, userID, recharge: rechargeAmount, method: paymentMethod, pin };
+      const body = { card, userID, recharge: rechargeAmount, method: paymentMethod, pin,utr };
       const response = await axios.post(`${Constants.API}card/recharge`, body, {
         headers: { "Content-Type": "application/json" },
       });
@@ -71,7 +72,6 @@ const Recharge = () => {
       if (response.data.status === "1001") {
         setMessage(response.data.message || "Recharge successful.");
         setShowSuccess(true);
-        window.location.href = `/scan`;
         return true;
       } else {
         setMessage(response.data.message || "Recharge failed.");
@@ -84,6 +84,11 @@ const Recharge = () => {
       console.error("Recharge error:", error);
       return false;
     }
+  };
+
+  const handleUTRChange = (e) => {
+    // Allow only 5 digits
+    setUTR(e.target.value.replace(/\D/g, "").slice(0, 5));
   };
 
   return (
@@ -129,6 +134,21 @@ const Recharge = () => {
             onChange={(e) => setPin(e.target.value)}
             required
           />
+            {/* UTR Field (Only for Online Payment) */}
+        {paymentMethod === "ONLINE" && (
+          <div className="form-group">
+            <label>UTR</label>
+            <input
+              type="text"
+              name="UTR"
+              value={utr}
+              onChange={handleUTRChange}
+              placeholder="Enter 5-digit UTR"
+              className="form-input"
+              required
+            />
+          </div>
+        )}
         </div>
         <div className="form-group">
           <label>Card</label>

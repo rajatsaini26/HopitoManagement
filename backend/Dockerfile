@@ -1,20 +1,22 @@
-# Use Node.js image as base
+# backend/Dockerfile
+
 FROM node:18
+
+# Install udevadm and other dependencies
+RUN apt-get update && apt-get install -y \
+    udev \
+    && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
 WORKDIR /usr/src/app
 
-# Copy package.json and package-lock.json
+# Copy package.json and install dependencies
 COPY package*.json ./
-
-# Install dependencies
 RUN npm install
 
-# Copy the entire backend source code
+# Copy the source code
 COPY . .
 
-# Expose port 5000
 EXPOSE 5000
 
-# Use nodemon for hot-reloading in development mode
 CMD ["npm", "run", "dev"]

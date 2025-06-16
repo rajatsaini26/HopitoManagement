@@ -13,7 +13,6 @@ const Login = () => {
     // Check if the user is already logged in
     useEffect(() => {
             utils.checkLoginCredentials();
-
     }, []);
 
     const validateInputs = () => {

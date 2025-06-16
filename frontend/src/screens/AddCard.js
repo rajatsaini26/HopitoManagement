@@ -14,6 +14,7 @@ const AddCard = () => {
   const [paymentMethod, setPaymentMethod] = useState("CASH");
   const [message, setMessage] = useState("");
   const [otp, setOTP] = useState("");
+  const [utr, setUTR] = useState("");
 
   const [form, setForm] = useState({
     firstName: "",
@@ -37,19 +38,22 @@ const AddCard = () => {
 
     if (name === "phone") {
       // Allow only numbers and restrict to 10 digits
-      const phoneValue = value.replace(/\D/g, "").slice(0, 10);
-      setForm((prevForm) => ({ ...prevForm, phone: phoneValue }));
+      setForm((prevForm) => ({ ...prevForm, phone: value.replace(/\D/g, "").slice(0, 10) }));
     } else {
       setForm((prevForm) => ({ ...prevForm, [name]: value }));
     }
   };
 
+  const handleUTRChange = (e) => {
+    // Allow only 5 digits
+    setUTR(e.target.value.replace(/\D/g, "").slice(0, 5));
+  };
+
   const checkCard = async (uid) => {
     try {
-      const body = { card: uid };
       const response = await axios.post(
         "http://localhost:5000/api/card/check-card",
-        body,
+        { card: uid },
         { headers: { "Content-Type": "application/json" } }
       );
 
@@ -70,7 +74,8 @@ const AddCard = () => {
   const handleNewCard = async (e) => {
     e.preventDefault();
 
-    if (!userID || !card || !form.firstName || !form.lastName || !form.phone || !form.address || !otp) {
+    if (!userID || !card || !form.firstName || !form.lastName || !form.phone || !form.address || !otp || 
+      (paymentMethod === "ONLINE" && !utr)) {
       setMessage("Please fill in all required fields.");
       setShowUnsuccessModal(true);
       return;
@@ -87,6 +92,7 @@ const AddCard = () => {
           balance: parseInt(form.cardLevel, 10),
           method: paymentMethod,
           pin: otp,
+          utr: paymentMethod === "ONLINE" ? utr : null,
         };
 
         const response = await axios.post(
@@ -98,6 +104,9 @@ const AddCard = () => {
         if (response.data.status === 1001) {
           setMessage(response.data.message);
           setShowSuccess(true);
+          setTimeout(() => {
+            window.location.href = "/scan";
+          }, 1850);
         } else {
           setMessage(response.data.message);
           setShowUnsuccessModal(true);
@@ -207,12 +216,31 @@ const AddCard = () => {
           <select
             className="form-input"
             value={paymentMethod}
-            onChange={(e) => setPaymentMethod(e.target.value)}
+            onChange={(e) => {
+              setPaymentMethod(e.target.value);
+              console.log("Payment method changed to:", e.target.value); // Debugging
+            }}
           >
             <option value="CASH">CASH</option>
             <option value="ONLINE">ONLINE</option>
           </select>
         </div>
+
+        {/* UTR Field (Only for Online Payment) */}
+        {paymentMethod === "ONLINE" && (
+          <div className="form-group">
+            <label>UTR</label>
+            <input
+              type="text"
+              name="UTR"
+              value={utr}
+              onChange={handleUTRChange}
+              placeholder="Enter 5-digit UTR"
+              className="form-input"
+              required
+            />
+          </div>
+        )}
 
         {/* Card */}
         <div className="form-group">

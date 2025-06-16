@@ -1,45 +1,196 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { pool } = require('../config/db'); // Assuming your MySQL config is in 'config/db'
+const { pool } = require('../config/db');
 const { generateUserID } = require('../utils/generateUserID');
+const rateLimit = require("express-rate-limit");
+const helmet = require("helmet");
+const validator = require("validator");
+const xss = require("xss");
 require('dotenv').config();
 
 const router = express.Router();
 
+// Rate limiting middleware - stricter for auth operations
+const authRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // limit each IP to 10 requests per windowMs for auth operations
+  message: { error: "Too many authentication requests, please try again later." },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true, // Don't count successful requests
+});
+
+// Login specific rate limiting - even stricter
+const loginRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // limit each IP to 5 login attempts per windowMs
+  message: { error: "Too many login attempts, please try again later." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Apply rate limiting and security headers
+router.use(authRateLimit);
+router.use(helmet());
+
+// Session validation middleware
+const requireSession = (req, res, next) => {
+  if (!req.session || !req.session.id) {
+    return res.status(401).json({ 
+      success: false,
+      error: "Session required", 
+      code: "SESSION_REQUIRED" 
+    });
+  }
+  next();
+};
+
+// Input sanitization middleware
+const sanitizeInput = (req, res, next) => {
+  const sanitizeValue = (value) => {
+    if (typeof value === 'string') {
+      return xss(validator.escape(value));
+    }
+    return value;
+  };
+
+  // Sanitize body
+  if (req.body) {
+    Object.keys(req.body).forEach(key => {
+      req.body[key] = sanitizeValue(req.body[key]);
+    });
+  }
+
+  // Sanitize query parameters
+  if (req.query) {
+    Object.keys(req.query).forEach(key => {
+      req.query[key] = sanitizeValue(req.query[key]);
+    });
+  }
+
+  next();
+};
+
+// Database transaction wrapper
+const withTransaction = async (callback) => {
+  const connection = await pool.getConnection();
+  await connection.beginTransaction();
+  
+  try {
+    const result = await callback(connection);
+    await connection.commit();
+    return result;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+};
+
+// Validation helpers
+const validateRegistrationData = (data) => {
+  const errors = [];
+  
+  if (!data.mobile || !validator.isMobilePhone(data.mobile, 'any')) {
+    errors.push("Valid mobile number is required");
+  }
+  
+  if (!data.name || !validator.isLength(data.name, { min: 2, max: 100 })) {
+    errors.push("Name must be between 2 and 100 characters");
+  }
+  
+  if (!data.address || !validator.isLength(data.address, { min: 5, max: 200 })) {
+    errors.push("Address must be between 5 and 200 characters");
+  }
+  
+  if (!data.password || !validator.isLength(data.password, { min: 6 })) {
+    errors.push("Password must be at least 6 characters long");
+  }
+  
+  if (!data.otp || !validator.isNumeric(data.otp.toString()) || data.otp.toString().length !== 4) {
+    errors.push("OTP must be a 4-digit number");
+  }
+  
+  if (!data.role || !['Employee', 'Manager'].includes(data.role)) {
+    errors.push("Valid role is required (Employee or Manager)");
+  }
+  
+  return errors;
+};
+
+const validateLoginData = (data) => {
+  const errors = [];
+  
+  if (!data.mobile || !validator.isMobilePhone(data.mobile, 'any')) {
+    errors.push("Valid mobile number is required");
+  }
+  
+  if (!data.password || !validator.isLength(data.password, { min: 1 })) {
+    errors.push("Password is required");
+  }
+  
+  return errors;
+};
+
 // Register Employee
-router.post('/register', async (req, res) => {
+router.post('/register', sanitizeInput, async (req, res) => {
     const { mobile, name, address, password, otp, role } = req.body;
 
     try {
-        // Get the last employee's userID
-        const [lastEmployee] = await pool.query('SELECT userID FROM Employee ORDER BY userID DESC LIMIT 1');
-
-        // Calculate the new userID
-        let userID = 101; // Default in case no employee exists
-        if (lastEmployee.length > 0) {
-            userID = lastEmployee[0].userID + 1; // Increment the last userID by 1
+        // Validate input
+        const validationErrors = validateRegistrationData(req.body);
+        if (validationErrors.length > 0) {
+            return res.status(400).json({ 
+                success: false,
+                error: "Validation failed", 
+                details: validationErrors 
+            });
         }
 
-        // Check if the mobile number is already registered
-        const [existingUser] = await pool.query('SELECT * FROM Employee WHERE mobile = ?', [mobile]);
-        if (existingUser.length > 0) {
-            return res.status(400).json({ success: false, message: 'Employee already exists with this mobile number.' });
-        }
-        console.log(userID);
-        if (!userID) {
+        const result = await withTransaction(async (connection) => {
+            // Check if the mobile number is already registered
+            const checkExistingQuery = 'SELECT userID FROM Employee WHERE mobile = ?';
+            const [existingUser] = await connection.execute(checkExistingQuery, [mobile]);
             
-            return res.status(500).json({ success: false, message: "Failed to generate userID" });
+            if (existingUser.length > 0) {
+                throw new Error('Employee already exists with this mobile number');
+            }
+
+            // Get the last employee's userID
+            const lastEmployeeQuery = 'SELECT userID FROM Employee ORDER BY userID DESC LIMIT 1';
+            const [lastEmployee] = await connection.execute(lastEmployeeQuery);
+
+            // Calculate the new userID
+            let userID = 101; // Default in case no employee exists
+            if (lastEmployee.length > 0) {
+                userID = lastEmployee[0].userID + 1; // Increment the last userID by 1
+            }
+
+            // Hash the password
+            const hashedPassword = await bcrypt.hash(password, 12); // Increased salt rounds
+
+            // Insert the new employee into the database
+            const insertQuery = `
+                INSERT INTO Employee (mobile, name, address, userID, password, otp, role, created_at, updated_at) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+            `;
+            const [insertResult] = await connection.execute(insertQuery, [
+                mobile, name, address, userID, hashedPassword, otp, role
+            ]);
+
+            return { userID, insertId: insertResult.insertId };
+        });
+
+        // Store operation in session for audit (if session exists)
+        if (req.session) {
+            req.session.lastOperation = {
+                type: 'employee_registration',
+                timestamp: new Date().toISOString(),
+                userID: result.userID
+            };
         }
-
-        // Hash the password and OTP
-        const hashedPassword = await bcrypt.hash(password, 10);
-
-        // Insert the new employee into the database
-        await pool.query(
-            'INSERT INTO Employee (mobile, name, address, userID, password, otp, role) VALUES (?, ?, ?, ?, ?, ?, ?)',
-            [mobile, name, address, userID, hashedPassword, otp,role]
-        );
 
         // Return success response
         res.status(201).json({
@@ -49,31 +200,47 @@ router.post('/register', async (req, res) => {
                 mobile,
                 name,
                 address,
-                userID,
+                userID: result.userID,
             },
+            sessionId: req.session?.id
         });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ success: false, message: 'Internal server error' });
+
+    } catch (error) {
+        console.error('Registration error:', error.message);
+        res.status(error.message.includes("already exists") ? 409 : 500).json({ 
+            success: false, 
+            error: error.message || 'Internal server error' 
+        });
     }
 });
 
 // Login Employee or Admin
-router.post('/login', async (req, res) => {
+router.post('/login', loginRateLimit, sanitizeInput, async (req, res) => {
     const { mobile, password } = req.body;
-    let role, user;
 
     try {
+        // Validate input
+        const validationErrors = validateLoginData(req.body);
+        if (validationErrors.length > 0) {
+            return res.status(400).json({ 
+                success: false,
+                error: "Validation failed", 
+                details: validationErrors 
+            });
+        }
+
+        let role, user;
+
         // Query the Employee table to check if the mobile number exists
-        const [users] = await pool.query('SELECT * FROM Employee WHERE mobile = ?', [mobile]);
+        const employeeQuery = 'SELECT * FROM Employee WHERE mobile = ?';
+        const [users] = await pool.execute(employeeQuery, [mobile]);
 
         if (users.length === 0) {
             // If no user is found in Employee, query the Admin table
-            const [admins] = await pool.query('SELECT * FROM Admin WHERE mobile = ?', [mobile]);
-            console.log(admins);
+            const adminQuery = 'SELECT * FROM Admin WHERE mobile = ?';
+            const [admins] = await pool.execute(adminQuery, [mobile]);
 
             if (admins.length === 0) {
-                // If no user is found in both Employee and Admin tables
                 return res.status(400).json({
                     success: false,
                     message: 'Invalid Mobile Number',
@@ -81,13 +248,11 @@ router.post('/login', async (req, res) => {
                 });
             }
 
-            // If user is found in the Admin table, validate password and role
             user = admins[0];
-            role = 'Admin'; // Assign role as 'admin'
+            role = 'Admin';
         } else {
-            // If user is found in the Employee table
             user = users[0];
-            role = user.role; // Assign role from Employee table
+            role = user.role;
         }
 
         // Validate the password
@@ -111,10 +276,21 @@ router.post('/login', async (req, res) => {
 
         // Generate JWT token
         const token = jwt.sign(
-            { id: user.id, role }, // Include role in the token payload
+            { id: user.id, role, userID: user.userID },
             process.env.JWT_SECRET,
             { expiresIn: '20m' }
         );
+
+        // Store login info in session
+        if (req.session) {
+            req.session.userID = user.userID;
+            req.session.userRole = role;
+            req.session.lastOperation = {
+                type: 'user_login',
+                timestamp: new Date().toISOString(),
+                userID: user.userID
+            };
+        }
 
         // Respond with token and user details
         res.status(200).json({
@@ -124,10 +300,11 @@ router.post('/login', async (req, res) => {
             user: user.name,
             userID: user.userID,
             role,
+            sessionId: req.session?.id
         });
 
-    } catch (err) {
-        console.error(err);
+    } catch (error) {
+        console.error('Login error:', error.message);
         res.status(500).json({
             success: false,
             message: 'Internal server error',
@@ -136,125 +313,315 @@ router.post('/login', async (req, res) => {
     }
 });
 
-// Get Employee Details by ID   (working)
-router.post('/emp', async (req, res) => {
-    const { userID } = req.body; // Get the employee ID from the URL parameters
-    let id =userID;
+// Get Employee Details by ID
+router.post('/emp', requireSession, sanitizeInput, async (req, res) => {
+    const { userID } = req.body;
+
     try {
         // Validate input
-        if (!id) {
-            return res.status(400).json({ success: false, message: 'Employee ID is required.' });
+        if (!userID || !validator.isNumeric(userID.toString())) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Valid Employee ID is required.' 
+            });
         }
+
+        // Store operation in session for audit
+        req.session.lastOperation = {
+            type: 'employee_details_view',
+            timestamp: new Date().toISOString(),
+            queriedUserID: userID
+        };
 
         // Fetch the employee details from the database
-        const [employee] = await pool.query('SELECT * FROM Employee WHERE userID = ?', [id]);
+        const employeeQuery = 'SELECT * FROM Employee WHERE userID = ?';
+        const [employee] = await pool.execute(employeeQuery, [userID]);
 
         if (employee.length === 0) {
-            return res.status(404).json({ success: false, message: 'Employee not found.' });
+            return res.status(404).json({ 
+                success: false, 
+                error: 'Employee not found.' 
+            });
         }
 
-        // Return success response with employee details
+        // Remove sensitive data from response
+        const employeeData = { ...employee[0] };
+        delete employeeData.password;
+        delete employeeData.otp;
+
         res.status(200).json({
             success: true,
-            employee: employee[0],
-            role: employee[0].role, // Return the first (and only) employee object
+            employee: employeeData,
+            role: employee[0].role,
+            sessionId: req.session.id
         });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ success: false, message: 'Internal server error' });
+
+    } catch (error) {
+        console.error('Employee details error:', error.message);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Internal server error' 
+        });
     }
 });
 
 // Update Employee Details
-// NOTE METHOD-> PUT
-// in update form, provide the details of employee in all the fields.
-router.put('/update', async (req, res) => {
-    const { userID, mobile, name, address } = req.body; // Get the details from the request body
+router.put('/update', requireSession, sanitizeInput, async (req, res) => {
+    const { userID, mobile, name, address } = req.body;
 
     try {
         // Validate input
-        if (!userID) {
-            return res.status(400).json({ success: false, message: 'User  ID is required.' });
+        if (!userID || !validator.isNumeric(userID.toString())) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Valid User ID is required.' 
+            });
         }
 
-        // Update the employee details in the database
-        const [results] = await pool.query(
-            'UPDATE Employee SET mobile = ?, name = ?, address = ? WHERE userID = ?',
-            [mobile, name, address, userID]
-        );
+        const updateData = { mobile, name, address };
+        const validationErrors = [];
 
-        if (results.affectedRows === 0) {
-            return res.status(404).json({ success: false, message: 'Employee not found.' });
+        if (mobile && !validator.isMobilePhone(mobile, 'any')) {
+            validationErrors.push("Valid mobile number is required");
         }
 
-        // Return success response
+        if (name && !validator.isLength(name, { min: 2, max: 100 })) {
+            validationErrors.push("Name must be between 2 and 100 characters");
+        }
+
+        if (address && !validator.isLength(address, { min: 5, max: 200 })) {
+            validationErrors.push("Address must be between 5 and 200 characters");
+        }
+
+        if (validationErrors.length > 0) {
+            return res.status(400).json({ 
+                success: false,
+                error: "Validation failed", 
+                details: validationErrors 
+            });
+        }
+
+        // Store operation in session
+        req.session.lastOperation = {
+            type: 'employee_update',
+            timestamp: new Date().toISOString(),
+            targetUserID: userID
+        };
+
+        const result = await withTransaction(async (connection) => {
+            // Check if mobile number is already used by another employee
+            if (mobile) {
+                const checkMobileQuery = 'SELECT userID FROM Employee WHERE mobile = ? AND userID != ?';
+                const [mobileExists] = await connection.execute(checkMobileQuery, [mobile, userID]);
+                
+                if (mobileExists.length > 0) {
+                    throw new Error("Mobile number already exists for another employee");
+                }
+            }
+
+            // Update the employee details
+            const updateQuery = `
+                UPDATE Employee 
+                SET mobile = ?, name = ?, address = ?, updated_at = NOW() 
+                WHERE userID = ?
+            `;
+            const [updateResult] = await connection.execute(updateQuery, [mobile, name, address, userID]);
+
+            if (updateResult.affectedRows === 0) {
+                throw new Error("Employee not found");
+            }
+
+            return updateResult;
+        });
+
         res.status(200).json({
             success: true,
             message: 'Employee details updated successfully!',
+            affectedRows: result.affectedRows,
+            sessionId: req.session.id
         });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ success: false, message: 'Internal server error' });
+
+    } catch (error) {
+        console.error('Update employee error:', error.message);
+        res.status(error.message.includes("not found") ? 404 : 
+                  error.message.includes("already exists") ? 409 : 500).json({ 
+            success: false, 
+            error: error.message || 'Internal server error' 
+        });
     }
 });
 
 // Update Employee Password
-// NOTE METHOD-> PUT
-router.put('/update_pass', async (req, res) => {
-    const { userID, oldPassword, newPassword } = req.body; // Get the details from the request body
+router.put('/update_pass', requireSession, sanitizeInput, async (req, res) => {
+    const { userID, oldPassword, newPassword } = req.body;
 
     try {
         // Validate input
-        if (!userID || !oldPassword || !newPassword) {
-            return res.status(400).json({ success: false, message: 'User  ID, old password, and new password are required.' });
+        if (!userID || !validator.isNumeric(userID.toString())) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Valid User ID is required.' 
+            });
         }
 
-        // Fetch the employee's current hashed password from the database
-        const [employee] = await pool.query('SELECT password FROM Employee WHERE userID = ?', [userID]);
-
-        if (employee.length === 0) {
-            return res.status(404).json({ success: false, message: 'Employee not found.' });
+        if (!oldPassword || !newPassword) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Old password and new password are required.' 
+            });
         }
 
-        // Compare the old password with the hashed password
-        const isMatch = await bcrypt.compare(oldPassword, employee[0].password);
-        if (!isMatch) {
-            return res.status(400).json({ success: false, message: 'Old password is incorrect.' });
+        if (!validator.isLength(newPassword, { min: 6 })) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'New password must be at least 6 characters long.' 
+            });
         }
 
-        // Hash the new password
-        const hashedNewPassword = await bcrypt.hash(newPassword, 10);
+        // Store operation in session
+        req.session.lastOperation = {
+            type: 'password_update',
+            timestamp: new Date().toISOString(),
+            targetUserID: userID
+        };
 
-        // Update the password in the database
-        await pool.query('UPDATE Employee SET password = ? WHERE userID = ?', [hashedNewPassword, userID]);
+        const result = await withTransaction(async (connection) => {
+            // Fetch the employee's current hashed password
+            const passwordQuery = 'SELECT password FROM Employee WHERE userID = ?';
+            const [employee] = await connection.execute(passwordQuery, [userID]);
 
-        // Return success response
+            if (employee.length === 0) {
+                throw new Error("Employee not found");
+            }
+
+            // Compare the old password with the hashed password
+            const isMatch = await bcrypt.compare(oldPassword, employee[0].password);
+            if (!isMatch) {
+                throw new Error("Old password is incorrect");
+            }
+
+            // Hash the new password
+            const hashedNewPassword = await bcrypt.hash(newPassword, 12);
+
+            // Update the password in the database
+            const updateQuery = 'UPDATE Employee SET password = ?, updated_at = NOW() WHERE userID = ?';
+            const [updateResult] = await connection.execute(updateQuery, [hashedNewPassword, userID]);
+
+            return updateResult;
+        });
+
         res.status(200).json({
             success: true,
             message: 'Password updated successfully!',
+            sessionId: req.session.id
         });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ success: false, message: 'Internal server error' });
+
+    } catch (error) {
+        console.error('Password update error:', error.message);
+        res.status(error.message.includes("not found") ? 404 : 
+                  error.message.includes("incorrect") ? 400 : 500).json({ 
+            success: false, 
+            error: error.message || 'Internal server error' 
+        });
     }
 });
 
-router.get('/validatePin', async (req, res) => {
+// Validate PIN
+router.post('/validatePin', requireSession, sanitizeInput, async (req, res) => {
+    const { enteredPin, userID } = req.body;
 
-    const { enteredPin,userID } = req.body; // PIN entered by the user
     try {
-        const [users] = await pool.query('SELECT * FROM Employee WHERE userID = ?', [userID]);
-        // Compare the entered PIN with the hashed PIN
-        if (users[0].OTP == enteredPin) {
-            res.send({ success: true, message: "PIN verified successfully", status: 1001 });
-        } else {
-            res.status(401).send({ success: false, message: "Incorrect PIN", status: 1003 });
+        // Validate input
+        if (!userID || !validator.isNumeric(userID.toString())) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Valid User ID is required.',
+                status: 1004 
+            });
         }
-    }catch(e){
-        res.status(402).send({ success: false, message: "Server Error", status: 1004 });
 
+        if (!enteredPin || !validator.isNumeric(enteredPin.toString()) || enteredPin.toString().length !== 4) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Valid 4-digit PIN is required.',
+                status: 1004 
+            });
+        }
+
+        // Store operation in session
+        req.session.lastOperation = {
+            type: 'pin_validation',
+            timestamp: new Date().toISOString(),
+            targetUserID: userID
+        };
+
+        // Fetch user data
+        const userQuery = 'SELECT otp FROM Employee WHERE userID = ?';
+        const [users] = await pool.execute(userQuery, [userID]);
+
+        if (users.length === 0) {
+            return res.status(404).json({ 
+                success: false, 
+                error: "Employee not found", 
+                status: 1004 
+            });
+        }
+
+        // Compare the entered PIN with the stored OTP
+        if (users[0].otp == enteredPin) {
+            res.status(200).json({ 
+                success: true, 
+                message: "PIN verified successfully", 
+                status: 1001,
+                sessionId: req.session.id
+            });
+        } else {
+            res.status(401).json({ 
+                success: false, 
+                message: "Incorrect PIN", 
+                status: 1003 
+            });
+        }
+
+    } catch (error) {
+        console.error('PIN validation error:', error.message);
+        res.status(500).json({ 
+            success: false, 
+            message: "Server Error", 
+            status: 1004 
+        });
     }
 });
 
+// Logout endpoint
+router.post('/logout', requireSession, async (req, res) => {
+    try {
+        // Store logout operation in session before destroying
+        const userID = req.session.userID;
+        
+        // Destroy session
+        req.session.destroy((err) => {
+            if (err) {
+                console.error('Session destruction error:', err);
+                return res.status(500).json({
+                    success: false,
+                    error: 'Failed to logout properly'
+                });
+            }
+
+            res.status(200).json({
+                success: true,
+                message: 'Logged out successfully'
+            });
+        });
+
+    } catch (error) {
+        console.error('Logout error:', error.message);
+        res.status(500).json({
+            success: false,
+            error: 'Internal server error'
+        });
+    }
+});
 
 module.exports = router;

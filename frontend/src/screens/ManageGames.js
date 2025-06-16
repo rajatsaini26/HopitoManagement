@@ -3,11 +3,11 @@ import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import Constants from "../components/Constants";
 import { format } from "date-fns";
-import "../css/manageGame.css"; // Optional CSS file
+import "../css/manageGame.css"; 
 import utils from "../components/Utils";
 
 const ManageGames = () => {
-  const [games, setGames] = useState([]); // Store games
+  const [games, setGames] = useState([]);
   const [errorMessage, setErrorMessage] = useState("");
   const navigate = useNavigate();
 
@@ -65,8 +65,9 @@ const ManageGames = () => {
         <table border="1" style={{ textAlign: "left", width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr>
-              <th>ID</th>
+              <th>Game-ID</th>
               <th>Name</th>
+              <th>Reader-ID</th>
               <th>Session (minutes)</th>
               <th>Charge</th>
               <th>Discount %</th>
@@ -78,6 +79,7 @@ const ManageGames = () => {
                 <tr key={game.GameID}>
                   <td>{game.GameID}</td>
                   <td>{game.GameName}</td>
+                  <td>{game.ReaderID}</td>
                   <td>{game.SessionTime}</td>
                   {/* <td>{game.release_date ? format(new Date(game.release_date), 'dd MMMM, yyyy') : 'N/A'}</td> */}
                   <td>{game.Charge}</td>

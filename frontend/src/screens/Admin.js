@@ -17,8 +17,9 @@ const AdminPanel = () => {
     { title: "Transactions", link: "/admin/reports" },
     { title: "Individual Transaction", link: "/admin/history" },
     { title: "Manage Employee", link: "/admin/emps" },
-    // { title: "Manage Offers", link: "/manage-offers" },
+    { title: "Manage Ports", link: "/manage-ports" },
     { title: "Manage Games", link: "/admin/games" },
+    { title: "Check Card", link: "/scan" },
   ];
 
   return (
