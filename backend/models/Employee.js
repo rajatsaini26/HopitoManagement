@@ -1,34 +1,121 @@
-const pool = require('../config/db');
+const { DataTypes } = require('sequelize');
+const sequelize = require('../config/db').sequelize;
 
-const Employee = {
-    async findByMobile(mobile) {
-        const [result] = await pool.query('SELECT * FROM Employee WHERE mobile = ?', [mobile]);
-        return result.length > 0 ? result[0] : null;
+const Employee = sequelize.define('Employee', {
+    id: {
+        type: DataTypes.INTEGER,
+        primaryKey: true,
+        autoIncrement: true
     },
-
-    async findById(employeeId) {
-        const [result] = await pool.query('SELECT * FROM Employee WHERE id = ?', [employeeId]);
-        return result.length > 0 ? result[0] : null;
+    mobile: {
+        type: DataTypes.STRING,
+        allowNull: false,
+        unique: true,
+        validate: {
+            isNumeric: true,
+            len: [10, 15] // Mobile number length validation
+        }
     },
-
-    async create({ mobile, name, address, userID, password, otp }) {
-        const query = `
-            INSERT INTO Employee (mobile, name, address, userID, password, otp) 
-            VALUES (?, ?, ?, ?, ?, ?)
-        `;
-        const values = [mobile, name, address, userID, password, otp];
-        await pool.query(query, values);
+    name: {
+        type: DataTypes.STRING,
+        allowNull: false
     },
-
-    async update(employeeId, { name, address }) {
-        const query = `
-            UPDATE Employee 
-            SET name = ?, address = ? 
-            WHERE id = ?
-        `;
-        await pool.query(query, [name, address, employeeId]);
+    address: {
+        type: DataTypes.TEXT,
+        allowNull: true
     },
+    userID: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        unique: true
+    },
+    password: {
+        type: DataTypes.STRING,
+        allowNull: false
+    },
+    otp: {
+        type: DataTypes.STRING(6),
+        allowNull: true
+    },
+    status: {
+        type: DataTypes.ENUM('active', 'inactive', 'suspended'),
+        defaultValue: 'active'
+    },
+    role: {
+        type: DataTypes.STRING,
+        defaultValue: 'employee'
+    }
+}, {
+    tableName: 'employees', // Updated to match your database table name
+    timestamps: true,
+    createdAt: 'created_at',
+    updatedAt: 'updated_at'
+});
 
+// Static methods to maintain the same interface
+Employee.findByMobile = async function(mobile) {
+    const employee = await this.findOne({ where: { mobile } });
+    return employee;
+};
+
+Employee.findById = async function(employeeId) {
+    const employee = await this.findByPk(employeeId);
+    return employee;
+};
+
+Employee.createEmployee = async function({ mobile, name, address, userID, password, otp }) {
+    return await this.create({
+        mobile,
+        name,
+        address,
+        userID,
+        password,
+        otp
+    });
+};
+
+Employee.updateEmployee = async function(employeeId, { name, address }) {
+    const employee = await this.findByPk(employeeId);
+    if (employee) {
+        await employee.update({ name, address });
+        return employee;
+    }
+    return null;
+};
+
+// Additional methods for employee management
+Employee.updateOTP = async function(employeeId, otp) {
+    const employee = await this.findByPk(employeeId);
+    if (employee) {
+        await employee.update({ otp });
+        return employee;
+    }
+    return null;
+};
+
+Employee.verifyOTP = async function(mobile, otp) {
+    const employee = await this.findOne({ 
+        where: { mobile, otp } 
+    });
+    return employee;
+};
+
+Employee.changePassword = async function(employeeId, newPassword) {
+    const employee = await this.findByPk(employeeId);
+    if (employee) {
+        await employee.update({ password: newPassword, otp: null });
+        return employee;
+    }
+    return null;
+};
+
+Employee.getEmployeeTransactions = async function(employeeId, limit = 50) {
+    const TransactionHistory = require('./TransactionHistory');
+    return await TransactionHistory.findAll({
+        where: { emp_id: employeeId },
+        order: [['created_at', 'DESC']],
+        limit: limit
+    });
 };
 
 module.exports = Employee;

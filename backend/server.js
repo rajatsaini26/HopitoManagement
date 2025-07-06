@@ -107,6 +107,7 @@ const initializeDatabase = async () => {
     // Test database connection
     await sequelize.authenticate();
     console.log("✅ Database authentication successful");
+  
   } catch (err) {
     console.error("❌ Database initialization failed:", err.message);
     process.exit(1);

@@ -42,6 +42,7 @@ const Login = () => {
             const response = await axios.post(`${Constants.API}auth/login`, body, {
                 headers: { "Content-Type": "application/json" },
             });
+            console.log(response.data);
             const { token, user, userID, role  } = response.data;
             localStorage.setItem("jwtToken", token);
             localStorage.setItem("user", user);
@@ -49,11 +50,11 @@ const Login = () => {
             localStorage.setItem("role", role);
 
             console.log(response.data);
-            if(response.data.role === 'Employee'){
-                window.location.href = "/scan";
-            } else if (response.data.role === 'Admin'){
-                window.location.href = "/admin";
-            }
+            // if(response.data.role === 'Employee'){
+            //     window.location.href = "/scan";
+            // } else if (response.data.role === 'Admin'){
+            //     window.location.href = "/admin";
+            // }
         } catch (error) {
             console.error("Login error:", error.response?.data || error.message);
             setErrorMessage(
