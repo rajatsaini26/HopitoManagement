@@ -3,13 +3,15 @@ import { useNavigate } from "react-router-dom";
 import utils from "../components/Utils";
 
 import "../css/admin.css"; // Assuming you want to style the cards
+import Footer from "../components/Footer";
+import Header from "../components/Header";
 
 const AdminPanel = () => {
   const [user, setUser] = useState(); // Stores user info
   const navigate = useNavigate();
 
   useEffect(() => {
-        utils.checkLoginCredentials();
+        // utils.checkLoginCredentials();
     
   }, []);
 
@@ -23,7 +25,9 @@ const AdminPanel = () => {
   ];
 
   return (
-    <div className="admin-panel">
+<div>
+      <Header />
+<div className="admin-panel">
       <h1>Welcome to Admin Panel </h1>
       <div className="card-container">
         {cards.map((card, index) => (
@@ -32,7 +36,11 @@ const AdminPanel = () => {
           </div>
         ))}
       </div>
+      <Footer />
+
     </div>
+</div>
+
   );
 };
 

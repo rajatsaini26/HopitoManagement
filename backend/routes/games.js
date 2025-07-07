@@ -1,10 +1,14 @@
 const express = require('express');
-const { pool } = require('../config/db');
+const { Op } = require('sequelize'); // Import Op for Sequelize queries
 const rateLimit = require("express-rate-limit");
 const helmet = require("helmet");
 const validator = require("validator");
 const xss = require("xss");
 require('dotenv').config();
+
+// Import models
+const { Games, Sessions, Customer, Employee } = require('../models'); // Import necessary models
+const sequelize = require('../config/db').sequelize; // Import sequelize instance for transactions
 
 const router = express.Router();
 
@@ -24,112 +28,101 @@ router.use(helmet());
 // Session validation middleware
 const requireSession = (req, res, next) => {
   if (!req.session || !req.session.id) {
-    return res.status(401).json({ 
-      error: "Session required", 
-      code: "SESSION_REQUIRED" 
+    return res.status(401).json({
+      error: "Session required",
+      code: "SESSION_REQUIRED"
     });
   }
   next();
 };
 
-// Admin/Manager role check middleware
-const requireAdminRole = (req, res, next) => {
-  // This would typically check the user's role from session or JWT
-  // For now, we'll add a placeholder - implement based on your auth system
-  if (!req.session.userRole || !['Admin', 'Manager'].includes(req.session.userRole)) {
-    return res.status(403).json({ 
-      error: "Insufficient permissions", 
-      code: "INSUFFICIENT_PERMISSIONS" 
-    });
-  }
-  next();
+// Role-based access control middleware
+const requireRole = (allowedRoles) => {
+  return (req, res, next) => {
+    if (!req.session || !req.session.userRole || !allowedRoles.includes(req.session.userRole)) {
+      return res.status(403).json({
+        error: "Insufficient permissions",
+        code: "INSUFFICIENT_PERMISSIONS",
+        requiredRoles: allowedRoles
+      });
+    }
+    next();
+  };
 };
 
 // Input sanitization middleware
 const sanitizeInput = (req, res, next) => {
   const sanitizeValue = (value) => {
     if (typeof value === 'string') {
-      return xss(validator.escape(value));
+      return xss(validator.escape(value.trim()));
     }
     return value;
   };
 
-  // Sanitize body
-  if (req.body) {
-    Object.keys(req.body).forEach(key => {
-      req.body[key] = sanitizeValue(req.body[key]);
-    });
-  }
+  const sanitizeObject = (obj) => {
+    if (!obj || typeof obj !== 'object') return obj;
 
-  // Sanitize query parameters
-  if (req.query) {
-    Object.keys(req.query).forEach(key => {
-      req.query[key] = sanitizeValue(req.query[key]);
+    const sanitized = {};
+    Object.keys(obj).forEach(key => {
+      if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+        return;
+      }
+      sanitized[key] = Array.isArray(obj[key])
+        ? obj[key].map(sanitizeValue)
+        : sanitizeValue(obj[key]);
     });
-  }
+    return sanitized;
+  };
+
+  req.body = sanitizeObject(req.body);
+  req.query = sanitizeObject(req.query);
+  req.params = sanitizeObject(req.params);
 
   next();
-};
-
-// Database transaction wrapper
-const withTransaction = async (callback) => {
-  const connection = await pool.getConnection();
-  await connection.beginTransaction();
-  
-  try {
-    const result = await callback(connection);
-    await connection.commit();
-    return result;
-  } catch (error) {
-    await connection.rollback();
-    throw error;
-  } finally {
-    connection.release();
-  }
 };
 
 // Game validation helper
 const validateGameData = (data, isUpdate = false) => {
   const errors = [];
-  
+
   if (!isUpdate || data.name !== undefined) {
     if (!data.name || !validator.isLength(data.name, { min: 2, max: 100 })) {
       errors.push("Game name must be between 2 and 100 characters");
     }
   }
-  
+
   if (!isUpdate || data.charge !== undefined) {
     if (data.charge == null || !validator.isNumeric(data.charge.toString()) || parseFloat(data.charge) < 0) {
       errors.push("Valid charge amount is required");
     }
   }
-  
+
   if (data.session !== undefined && data.session !== null) {
     if (!validator.isNumeric(data.session.toString()) || parseInt(data.session) < 0) {
       errors.push("Valid session time is required");
     }
   }
-  
+
   if (data.discount !== undefined && data.discount !== null) {
     if (!validator.isNumeric(data.discount.toString()) || parseFloat(data.discount) < 0 || parseFloat(data.discount) > 100) {
       errors.push("Discount must be between 0 and 100");
     }
   }
-  
+
   return errors;
 };
 
 // Add Game
-router.post('/add', requireSession, requireAdminRole, sanitizeInput, async (req, res) => {
-  const { name, charge, session, discount } = req.body;
-  
+router.post('/add', requireSession, requireRole(['Admin', 'Manager']), sanitizeInput, async (req, res) => {
+  const { game_name, charge, session_time, discount, description } = req.body; // Align with Games model fields
+
   try {
     // Validate input
     const validationErrors = validateGameData(req.body);
     if (validationErrors.length > 0) {
-      return res.status(400).json({ 
-        error: "Validation failed", 
-        details: validationErrors 
+      return res.status(400).json({
+        error: "Validation failed",
+        details: validationErrors
       });
     }
 
@@ -137,43 +130,36 @@ router.post('/add', requireSession, requireAdminRole, sanitizeInput, async (req,
     req.session.lastOperation = {
       type: 'game_add',
       timestamp: new Date().toISOString(),
-      data: { name, charge }
+      data: { game_name, charge },
+      userID: req.session.userID
     };
 
-    const result = await withTransaction(async (connection) => {
-      // Check if game with same name already exists
-      const checkExistingQuery = "SELECT GameID FROM Games WHERE GameName = ?";
-      const [existingGames] = await connection.execute(checkExistingQuery, [name]);
-      
-      if (existingGames.length > 0) {
-        throw new Error("Game with this name already exists");
-      }
+    // Check if game with same name already exists
+    const existingGame = await Games.findOne({ where: { game_name } });
+    if (existingGame) {
+      return res.status(409).json({ error: "Game with this name already exists", success: false });
+    }
 
-      // Insert new game
-      const insertQuery = `
-        INSERT INTO Games (GameName, Charge, SessionTime, Discount, created_at, updated_at) 
-        VALUES (?, ?, ?, ?, NOW(), NOW())
-      `;
-      const [insertResult] = await connection.execute(insertQuery, [
-        name, 
-        parseFloat(charge), 
-        session ? parseInt(session) : null, 
-        discount ? parseFloat(discount) : null
-      ]);
-
-      return insertResult;
+    // Create new game using the Games model
+    const newGame = await Games.create({
+      game_name,
+      charge: parseFloat(charge),
+      session_time: session_time ? parseInt(session_time) : null,
+      discount: discount ? parseFloat(discount) : 0,
+      description: description || null,
+      status: 'active' // Default status
     });
 
     res.status(201).json({
       message: 'Game added successfully.',
-      gameId: result.insertId,
+      gameId: newGame.id,
       sessionId: req.session.id,
       success: true
     });
 
   } catch (error) {
     console.error('Error adding game:', error.message);
-    res.status(error.message.includes("already exists") ? 409 : 500).json({ 
+    res.status(500).json({
       error: error.message || 'An unexpected error occurred.',
       success: false
     });
@@ -181,8 +167,8 @@ router.post('/add', requireSession, requireAdminRole, sanitizeInput, async (req,
 });
 
 // Update Game
-router.put('/update', requireSession, requireAdminRole, sanitizeInput, async (req, res) => {
-  const { id, name, charge, session, discount } = req.body;
+router.put('/update', requireSession, requireRole(['Admin', 'Manager']), sanitizeInput, async (req, res) => {
+  const { id, game_name, charge, session_time, discount, status, description } = req.body; // Align with Games model fields
 
   try {
     // Validate ID
@@ -191,18 +177,18 @@ router.put('/update', requireSession, requireAdminRole, sanitizeInput, async (re
     }
 
     // Validate that at least one field is provided for update
-    if (name === undefined && charge === undefined && session === undefined && discount === undefined) {
-      return res.status(400).json({ 
-        error: 'At least one field is required to update.' 
+    if (game_name === undefined && charge === undefined && session_time === undefined && discount === undefined && status === undefined && description === undefined) {
+      return res.status(400).json({
+        error: 'At least one field is required to update.'
       });
     }
 
     // Validate provided fields
     const validationErrors = validateGameData(req.body, true);
     if (validationErrors.length > 0) {
-      return res.status(400).json({ 
-        error: "Validation failed", 
-        details: validationErrors 
+      return res.status(400).json({
+        error: "Validation failed",
+        details: validationErrors
       });
     }
 
@@ -210,71 +196,46 @@ router.put('/update', requireSession, requireAdminRole, sanitizeInput, async (re
     req.session.lastOperation = {
       type: 'game_update',
       timestamp: new Date().toISOString(),
-      gameId: id
+      gameId: id,
+      userID: req.session.userID
     };
 
-    const result = await withTransaction(async (connection) => {
-      // Check if game exists
-      const checkGameQuery = "SELECT GameID FROM Games WHERE GameID = ? FOR UPDATE";
-      const [gameExists] = await connection.execute(checkGameQuery, [id]);
-      
-      if (gameExists.length === 0) {
-        throw new Error("Game not found");
+    // Find the game to update
+    const game = await Games.findByPk(id);
+    if (!game) {
+      return res.status(404).json({ error: "Game not found", success: false });
+    }
+
+    // Check for duplicate name if name is being updated
+    if (game_name !== undefined && game_name !== game.game_name) {
+      const existingGameWithName = await Games.findOne({ where: { game_name, id: { [Op.ne]: id } } });
+      if (existingGameWithName) {
+        return res.status(409).json({ error: "Another game with this name already exists", success: false });
       }
+    }
 
-      // Build dynamic update query
-      const updates = [];
-      const values = [];
+    // Build update object
+    const updateFields = {};
+    if (game_name !== undefined) updateFields.game_name = game_name;
+    if (charge !== undefined) updateFields.charge = parseFloat(charge);
+    if (session_time !== undefined) updateFields.session_time = session_time ? parseInt(session_time) : null;
+    if (discount !== undefined) updateFields.discount = discount ? parseFloat(discount) : 0;
+    if (status !== undefined && ['active', 'inactive', 'maintenance'].includes(status)) updateFields.status = status;
+    if (description !== undefined) updateFields.description = description;
 
-      if (name !== undefined) {
-        // Check if another game with same name exists
-        const checkNameQuery = "SELECT GameID FROM Games WHERE GameName = ? AND GameID != ?";
-        const [nameExists] = await connection.execute(checkNameQuery, [name, id]);
-        
-        if (nameExists.length > 0) {
-          throw new Error("Another game with this name already exists");
-        }
-        
-        updates.push('GameName = ?');
-        values.push(name);
-      }
-
-      if (charge !== undefined) {
-        updates.push('Charge = ?');
-        values.push(parseFloat(charge));
-      }
-
-      if (session !== undefined) {
-        updates.push('SessionTime = ?');
-        values.push(session ? parseInt(session) : null);
-      }
-
-      if (discount !== undefined) {
-        updates.push('Discount = ?');
-        values.push(discount ? parseFloat(discount) : null);
-      }
-
-      // Add updated_at timestamp
-      updates.push('updated_at = NOW()');
-      values.push(id); // For WHERE clause
-
-      const updateQuery = `UPDATE Games SET ${updates.join(', ')} WHERE GameID = ?`;
-      const [updateResult] = await connection.execute(updateQuery, values);
-
-      return updateResult;
-    });
+    // Perform the update
+    await game.update(updateFields);
 
     res.status(200).json({
       message: 'Game updated successfully.',
-      affectedRows: result.affectedRows,
+      gameId: game.id,
       sessionId: req.session.id,
       success: true
     });
 
   } catch (error) {
     console.error('Error updating game:', error.message);
-    res.status(error.message.includes("not found") ? 404 : 
-              error.message.includes("already exists") ? 409 : 500).json({ 
+    res.status(500).json({
       error: error.message || 'An unexpected error occurred.',
       success: false
     });
@@ -282,7 +243,7 @@ router.put('/update', requireSession, requireAdminRole, sanitizeInput, async (re
 });
 
 // Delete Game
-router.delete('/delete', requireSession, requireAdminRole, sanitizeInput, async (req, res) => {
+router.delete('/delete', requireSession, requireRole(['Admin', 'Manager']), sanitizeInput, async (req, res) => {
   const { id } = req.body;
 
   try {
@@ -295,44 +256,35 @@ router.delete('/delete', requireSession, requireAdminRole, sanitizeInput, async 
     req.session.lastOperation = {
       type: 'game_delete',
       timestamp: new Date().toISOString(),
-      gameId: id
+      gameId: id,
+      userID: req.session.userID
     };
 
-    const result = await withTransaction(async (connection) => {
-      // Check if game exists and if it's being used in any transactions
-      const checkUsageQuery = `
-        SELECT COUNT(*) as transactionCount 
-        FROM Transactions 
-        WHERE GameID = ?
-      `;
-      const [usageResult] = await connection.execute(checkUsageQuery, [id]);
-      
-      if (usageResult[0].transactionCount > 0) {
-        throw new Error("Cannot delete game that has transaction history");
-      }
+    // Check if game exists
+    const game = await Games.findByPk(id);
+    if (!game) {
+      return res.status(404).json({ error: "Game not found", success: false });
+    }
 
-      // Delete the game
-      const deleteQuery = 'DELETE FROM Games WHERE GameID = ?';
-      const [deleteResult] = await connection.execute(deleteQuery, [id]);
+    // Check if game is being used in any sessions
+    const sessionCount = await Sessions.count({ where: { game_id: id } });
+    if (sessionCount > 0) {
+      return res.status(409).json({ error: "Cannot delete game that has associated sessions", success: false });
+    }
 
-      if (deleteResult.affectedRows === 0) {
-        throw new Error("Game not found");
-      }
-
-      return deleteResult;
-    });
+    // Delete the game
+    await game.destroy();
 
     res.status(200).json({
       message: 'Game deleted successfully.',
-      affectedRows: result.affectedRows,
+      gameId: id,
       sessionId: req.session.id,
       success: true
     });
 
   } catch (error) {
     console.error('Error deleting game:', error.message);
-    res.status(error.message.includes("not found") ? 404 : 
-              error.message.includes("transaction history") ? 409 : 500).json({ 
+    res.status(500).json({
       error: error.message || 'An unexpected error occurred.',
       success: false
     });
@@ -342,38 +294,32 @@ router.delete('/delete', requireSession, requireAdminRole, sanitizeInput, async 
 // Get Game Details
 router.get('/gamedetails', requireSession, sanitizeInput, async (req, res) => {
   const { id } = req.query;
-  
+
   try {
     // Validate input
     if (!id || !validator.isNumeric(id.toString())) {
       return res.status(400).json({ error: 'Valid Game ID is required.' });
     }
 
-    // Use prepared statement for security
-    const getGameQuery = `
-      SELECT GameID, GameName, Charge, SessionTime, Discount, created_at, updated_at 
-      FROM Games 
-      WHERE GameID = ?
-    `;
-    const [gameResult] = await pool.execute(getGameQuery, [id]);
+    const game = await Games.findByPk(id);
 
-    if (gameResult.length === 0) {
-      return res.status(404).json({ 
+    if (!game) {
+      return res.status(404).json({
         error: 'Game not found.',
         success: false
       });
     }
 
-    const game = gameResult[0];
-
     res.status(200).json({
       message: 'Game found successfully.',
       game: {
-        GameID: game.GameID,
-        Name: game.GameName,
-        Charge: game.Charge,
-        Session: game.SessionTime,
-        Discount: game.Discount,
+        GameID: game.id,
+        Name: game.game_name,
+        Charge: parseFloat(game.charge),
+        Session: game.session_time,
+        Discount: parseFloat(game.discount),
+        Status: game.status,
+        Description: game.description,
         CreatedAt: game.created_at,
         UpdatedAt: game.updated_at
       },
@@ -383,7 +329,7 @@ router.get('/gamedetails', requireSession, sanitizeInput, async (req, res) => {
 
   } catch (error) {
     console.error('Error fetching game details:', error.message);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'An unexpected error occurred.',
       success: false
     });
@@ -394,59 +340,52 @@ router.get('/gamedetails', requireSession, sanitizeInput, async (req, res) => {
 router.get("/gameList", requireSession, sanitizeInput, async (req, res) => {
   try {
     const { page, limit, search, sortBy, sortOrder } = req.query;
-    
+
     // Validate and sanitize pagination parameters
     const pageNum = page && validator.isNumeric(page.toString()) ? parseInt(page) : 1;
     const limitNum = limit && validator.isNumeric(limit.toString()) ? Math.min(parseInt(limit), 100) : 10; // Max 100 items per page
     const offset = (pageNum - 1) * limitNum;
-    
+
     // Validate sort parameters
-    const allowedSortFields = ['GameName', 'Charge', 'SessionTime', 'Discount', 'created_at', 'updated_at'];
-    const sortField = sortBy && allowedSortFields.includes(sortBy) ? sortBy : 'GameName';
+    const allowedSortFields = ['game_name', 'charge', 'session_time', 'discount', 'status', 'created_at', 'updated_at'];
+    const sortField = sortBy && allowedSortFields.includes(sortBy) ? sortBy : 'game_name';
     const sortDirection = sortOrder && ['ASC', 'DESC'].includes(sortOrder.toUpperCase()) ? sortOrder.toUpperCase() : 'ASC';
-    
+
     // Build search condition
-    let searchCondition = '';
-    let queryParams = [];
-    
+    let whereClause = {};
     if (search && search.trim() !== '') {
-      const searchTerm = `%${search.trim()}%`;
-      searchCondition = 'WHERE GameName LIKE ?';
-      queryParams.push(searchTerm);
+      whereClause.game_name = { [Op.like]: `%${search.trim()}%` };
     }
-    
+
     // Store operation in session for audit
     req.session.lastOperation = {
       type: 'game_list_view',
       timestamp: new Date().toISOString(),
-      filters: { page: pageNum, limit: limitNum, search: search || null }
+      filters: { page: pageNum, limit: limitNum, search: search || null },
+      userID: req.session.userID
     };
 
     // Get total count for pagination
-    const countQuery = `SELECT COUNT(*) as total FROM Games ${searchCondition}`;
-    const [countResult] = await pool.execute(countQuery, queryParams);
-    const totalGames = countResult[0].total;
-    
+    const totalGames = await Games.count({ where: whereClause });
+
     // Get games with pagination and sorting
-    const gamesQuery = `
-      SELECT GameID, GameName, Charge, SessionTime, Discount, created_at, updated_at 
-      FROM Games 
-      ${searchCondition}
-      ORDER BY ${sortField} ${sortDirection}
-      LIMIT ? OFFSET ?
-    `;
-    
-    // Add pagination parameters to query params
-    const finalParams = [...queryParams, limitNum, offset];
-    const [gamesResult] = await pool.execute(gamesQuery, finalParams);
+    const gamesResult = await Games.findAll({
+      where: whereClause,
+      attributes: ['id', 'game_name', 'charge', 'session_time', 'discount', 'status', 'description', 'created_at', 'updated_at'],
+      order: [[sortField, sortDirection]],
+      limit: limitNum,
+      offset: offset
+    });
 
     // Format the response data
     const games = gamesResult.map(game => ({
-      GameID: game.GameID,
-      Name: game.GameName,
-      Charge: parseFloat(game.Charge),
-      Session: game.SessionTime,
-      Discount: game.Discount ? parseFloat(game.Discount) : null,
+      GameID: game.id,
+      Name: game.game_name,
+      Charge: parseFloat(game.charge),
+      Session: game.session_time,
+      Discount: parseFloat(game.discount),
+      Status: game.status,
+      Description: game.description,
       CreatedAt: game.created_at,
       UpdatedAt: game.updated_at
     }));
@@ -480,7 +419,7 @@ router.get("/gameList", requireSession, sanitizeInput, async (req, res) => {
 
   } catch (error) {
     console.error('Error fetching game list:', error.message);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'An unexpected error occurred while fetching games.',
       success: false
     });
@@ -488,36 +427,35 @@ router.get("/gameList", requireSession, sanitizeInput, async (req, res) => {
 });
 
 // Get Game Statistics (additional utility route)
-router.get('/stats', requireSession, requireAdminRole, async (req, res) => {
+router.get('/stats', requireSession, requireRole(['Admin', 'Manager']), async (req, res) => {
   try {
     // Store operation in session
     req.session.lastOperation = {
       type: 'game_stats_view',
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      userID: req.session.userID
     };
 
-    const statsQuery = `
-      SELECT 
-        COUNT(*) as totalGames,
-        AVG(Charge) as averageCharge,
-        MIN(Charge) as minCharge,
-        MAX(Charge) as maxCharge,
-        SUM(CASE WHEN Discount IS NOT NULL AND Discount > 0 THEN 1 ELSE 0 END) as gamesWithDiscount,
-        AVG(CASE WHEN SessionTime IS NOT NULL THEN SessionTime END) as averageSessionTime
-      FROM Games
-    `;
-    
-    const [statsResult] = await pool.execute(statsQuery);
-    const stats = statsResult[0];
+    const stats = await Games.findOne({
+      attributes: [
+        [sequelize.fn('COUNT', sequelize.col('id')), 'totalGames'],
+        [sequelize.fn('AVG', sequelize.col('charge')), 'averageCharge'],
+        [sequelize.fn('MIN', sequelize.col('charge')), 'minCharge'],
+        [sequelize.fn('MAX', sequelize.col('charge')), 'maxCharge'],
+        [sequelize.fn('SUM', sequelize.literal('CASE WHEN discount IS NOT NULL AND discount > 0 THEN 1 ELSE 0 END')), 'gamesWithDiscount'],
+        [sequelize.fn('AVG', sequelize.col('session_time')), 'averageSessionTime']
+      ],
+      raw: true // To get plain data
+    });
 
     res.status(200).json({
       message: 'Game statistics retrieved successfully.',
       stats: {
-        totalGames: stats.totalGames,
+        totalGames: parseInt(stats.totalGames),
         averageCharge: stats.averageCharge ? parseFloat(stats.averageCharge).toFixed(2) : null,
         minCharge: stats.minCharge ? parseFloat(stats.minCharge) : null,
         maxCharge: stats.maxCharge ? parseFloat(stats.maxCharge) : null,
-        gamesWithDiscount: stats.gamesWithDiscount,
+        gamesWithDiscount: parseInt(stats.gamesWithDiscount),
         averageSessionTime: stats.averageSessionTime ? parseFloat(stats.averageSessionTime).toFixed(1) : null
       },
       sessionId: req.session.id,
@@ -526,7 +464,7 @@ router.get('/stats', requireSession, requireAdminRole, async (req, res) => {
 
   } catch (error) {
     console.error('Error fetching game statistics:', error.message);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'An unexpected error occurred while fetching statistics.',
       success: false
     });
@@ -534,7 +472,7 @@ router.get('/stats', requireSession, requireAdminRole, async (req, res) => {
 });
 
 // Bulk Update Games (advanced feature)
-router.patch('/bulk-update', requireSession, requireAdminRole, sanitizeInput, async (req, res) => {
+router.patch('/bulk-update', requireSession, requireRole(['Admin', 'Manager']), sanitizeInput, async (req, res) => {
   const { gameIds, updates } = req.body;
 
   try {
@@ -561,9 +499,9 @@ router.patch('/bulk-update', requireSession, requireAdminRole, sanitizeInput, as
     // Validate update data
     const validationErrors = validateGameData(updates, true);
     if (validationErrors.length > 0) {
-      return res.status(400).json({ 
-        error: "Validation failed", 
-        details: validationErrors 
+      return res.status(400).json({
+        error: "Validation failed",
+        details: validationErrors
       });
     }
 
@@ -572,71 +510,189 @@ router.patch('/bulk-update', requireSession, requireAdminRole, sanitizeInput, as
       type: 'game_bulk_update',
       timestamp: new Date().toISOString(),
       gameIds: gameIds,
-      updateCount: gameIds.length
+      updateCount: gameIds.length,
+      userID: req.session.userID
     };
 
-    const result = await withTransaction(async (connection) => {
-      // Verify all games exist
-      const placeholders = gameIds.map(() => '?').join(',');
-      const checkQuery = `SELECT GameID FROM Games WHERE GameID IN (${placeholders})`;
-      const [existingGames] = await connection.execute(checkQuery, gameIds);
-      
-      if (existingGames.length !== gameIds.length) {
-        throw new Error("One or more games not found");
+    // Verify all games exist
+    const existingGames = await Games.findAll({
+      where: {
+        id: { [Op.in]: gameIds }
+      },
+      attributes: ['id']
+    });
+
+    if (existingGames.length !== gameIds.length) {
+      const foundIds = new Set(existingGames.map(g => g.id));
+      const missingIds = gameIds.filter(id => !foundIds.has(parseInt(id)));
+      return res.status(404).json({ error: `One or more games not found: ${missingIds.join(', ')}`, success: false });
+    }
+
+    // Build update object
+    const updateFields = {};
+    if (updates.charge !== undefined) updateFields.charge = parseFloat(updates.charge);
+    if (updates.session !== undefined) updateFields.session_time = updates.session ? parseInt(updates.session) : null;
+    if (updates.discount !== undefined) updateFields.discount = updates.discount ? parseFloat(updates.discount) : 0;
+    if (updates.status !== undefined && ['active', 'inactive', 'maintenance'].includes(updates.status)) updateFields.status = updates.status;
+    if (updates.description !== undefined) updateFields.description = updates.description;
+
+
+    if (Object.keys(updateFields).length === 0) {
+      return res.status(400).json({ error: "No valid fields provided for update", success: false });
+    }
+
+    // Perform bulk update
+    const [affectedRows] = await Games.update(updateFields, {
+      where: {
+        id: { [Op.in]: gameIds }
       }
-
-      // Build dynamic update query
-      const updateFields = [];
-      const values = [];
-
-      if (updates.charge !== undefined) {
-        updateFields.push('Charge = ?');
-        values.push(parseFloat(updates.charge));
-      }
-
-      if (updates.session !== undefined) {
-        updateFields.push('SessionTime = ?');
-        values.push(updates.session ? parseInt(updates.session) : null);
-      }
-
-      if (updates.discount !== undefined) {
-        updateFields.push('Discount = ?');
-        values.push(updates.discount ? parseFloat(updates.discount) : null);
-      }
-
-      if (updateFields.length === 0) {
-        throw new Error("No valid fields provided for update");
-      }
-
-      // Add updated_at timestamp
-      updateFields.push('updated_at = NOW()');
-
-      // Execute bulk update
-      const updateQuery = `
-        UPDATE Games 
-        SET ${updateFields.join(', ')} 
-        WHERE GameID IN (${placeholders})
-      `;
-      
-      const [updateResult] = await connection.execute(updateQuery, [...values, ...gameIds]);
-      return updateResult;
     });
 
     res.status(200).json({
-      message: `${result.affectedRows} games updated successfully.`,
-      affectedRows: result.affectedRows,
+      message: `${affectedRows} games updated successfully.`,
+      affectedRows: affectedRows,
       sessionId: req.session.id,
       success: true
     });
 
   } catch (error) {
     console.error('Error in bulk update:', error.message);
-    res.status(error.message.includes("not found") ? 404 : 500).json({ 
+    res.status(500).json({
       error: error.message || 'An unexpected error occurred during bulk update.',
       success: false
     });
   }
 });
+
+// New API to signal the start of a game session
+router.post('/start-game-signal', requireSession, requireRole(['Admin', 'Manager', 'Employee', 'Cashier']), sanitizeInput, async (req, res) => {
+  const { customerCard, gameId, empId, plannedDuration } = req.body;
+
+  try {
+    // Basic validation for required fields
+    if (!customerCard || !gameId || !empId) {
+      return res.status(400).json({ error: "Customer card, game ID, and employee ID are required.", code: "VALIDATION_ERROR" });
+    }
+    if (!validator.isAlphanumeric(customerCard.toString())) {
+      return res.status(400).json({ error: "Invalid customer card format.", code: "VALIDATION_ERROR" });
+    }
+    if (!validator.isNumeric(gameId.toString())) {
+      return res.status(400).json({ error: "Invalid game ID format.", code: "VALIDATION_ERROR" });
+    }
+    if (!validator.isNumeric(empId.toString())) {
+      return res.status(400).json({ error: "Invalid employee ID format.", code: "VALIDATION_ERROR" });
+    }
+    if (plannedDuration !== undefined && (!validator.isNumeric(plannedDuration.toString()) || parseInt(plannedDuration) <= 0)) {
+        return res.status(400).json({ error: "Planned duration must be a positive number in minutes.", code: "VALIDATION_ERROR" });
+    }
+
+    // Store operation in session for audit
+    req.session.lastOperation = {
+      type: 'game_session_start_signal',
+      timestamp: new Date().toISOString(),
+      customerCard,
+      gameId,
+      empId: req.session.userID // Log the employee from session
+    };
+
+    // Fetch customer and employee internal IDs
+    const customer = await Customer.findByCard(customerCard);
+    if (!customer) {
+      return res.status(404).json({ error: "Customer card not found.", success: false, code: "CUSTOMER_NOT_FOUND" });
+    }
+    const employee = await Employee.findOne({ where: { userID: empId } });
+    if (!employee) {
+      return res.status(404).json({ error: "Employee not found.", success: false, code: "EMPLOYEE_NOT_FOUND" });
+    }
+
+    // Call the Sessions model's startSession method
+    const session = await Sessions.startSession({
+      customer_id: customer.id,
+      game_id: parseInt(gameId),
+      emp_id: employee.id, // Use internal employee ID
+      card: customerCard,
+      planned_duration: plannedDuration ? parseInt(plannedDuration) : undefined, // Let model default if not provided
+      payment_method: 'card_balance' // Assuming payment from card balance for arcade games
+    });
+
+    res.status(200).json({
+      message: "Game session started successfully.",
+      sessionId: session.id,
+      customerName: session.customer.name,
+      gameName: session.game.game_name,
+      startTime: session.start_time,
+      finalCharge: parseFloat(session.final_charge),
+      currentBalance: parseFloat(session.customer.balance),
+      success: true
+    });
+
+  } catch (error) {
+    console.error('Error starting game session:', error.message);
+    res.status(500).json({
+      error: error.message || 'An unexpected error occurred while starting the game session.',
+      success: false
+    });
+  }
+});
+
+// New API to signal the stop of a game session
+router.post('/stop-game-signal', requireSession, requireRole(['Admin', 'Manager', 'Employee', 'Cashier']), sanitizeInput, async (req, res) => {
+  const { sessionId, empId, actualDuration } = req.body;
+
+  try {
+    // Basic validation for required fields
+    if (!sessionId || !empId) {
+      return res.status(400).json({ error: "Session ID and employee ID are required.", code: "VALIDATION_ERROR" });
+    }
+    if (!validator.isNumeric(sessionId.toString())) {
+      return res.status(400).json({ error: "Invalid session ID format.", code: "VALIDATION_ERROR" });
+    }
+    if (!validator.isNumeric(empId.toString())) {
+      return res.status(400).json({ error: "Invalid employee ID format.", code: "VALIDATION_ERROR" });
+    }
+    if (actualDuration !== undefined && (!validator.isNumeric(actualDuration.toString()) || parseInt(actualDuration) < 0)) {
+        return res.status(400).json({ error: "Actual duration must be a non-negative number in minutes.", code: "VALIDATION_ERROR" });
+    }
+
+    // Store operation in session for audit
+    req.session.lastOperation = {
+      type: 'game_session_stop_signal',
+      timestamp: new Date().toISOString(),
+      sessionId,
+      empId: req.session.userID // Log the employee from session
+    };
+
+    // Fetch employee internal ID
+    const employee = await Employee.findOne({ where: { userID: empId } });
+    if (!employee) {
+      return res.status(404).json({ error: "Employee not found.", success: false, code: "EMPLOYEE_NOT_FOUND" });
+    }
+
+    // Call the Sessions model's endSession method
+    const session = await Sessions.endSession(
+      parseInt(sessionId),
+      employee.id, // Use internal employee ID
+      actualDuration ? parseInt(actualDuration) : null
+    );
+
+    res.status(200).json({
+      message: "Game session ended successfully.",
+      sessionId: session.id,
+      status: session.status,
+      endTime: session.end_time,
+      actualDuration: session.actual_duration,
+      success: true
+    });
+
+  } catch (error) {
+    console.error('Error ending game session:', error.message);
+    res.status(500).json({
+      error: error.message || 'An unexpected error occurred while ending the game session.',
+      success: false
+    });
+  }
+});
+
 
 // Export the router
 module.exports = router;

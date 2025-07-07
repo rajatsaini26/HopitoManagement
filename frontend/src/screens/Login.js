@@ -1,19 +1,34 @@
+// src/components/Login.js
 import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom"; // Import useNavigate
+import { useAuth } from "../context/AuthContext"; // Import useAuth hook
 import "../css/login.css";
-import axios from "axios";
-import {jwtDecode} from "jwt-decode"; // Correct import for jwt-decode
-import Constants from "../components/Constants";
-import utils from "../components/Utils";
+// import axios from "axios"; // No longer needed directly in Login component
+// import {jwtDecode} from "jwt-decode"; // No longer needed directly in Login component
+// import Constants from "../components/Constants"; // No longer needed directly in Login component
+// import utils from "../components/Utils"; // No longer needed directly in Login component
 
 const Login = () => {
     const [Phone, setPhone] = useState("");
     const [password, setPassword] = useState("");
     const [errorMessage, setErrorMessage] = useState("");
+    const { login, authStatus } = useAuth(); // Use the login function from AuthContext
+    const navigate = useNavigate(); // Initialize useNavigate
 
-    // Check if the user is already logged in
+    // Redirect if already authenticated
     useEffect(() => {
-            utils.checkLoginCredentials();
-    }, []);
+        if (authStatus.isAuthenticated && authStatus.accessibleRoutes.length > 0) {
+            // Navigate to a default route based on role or accessible routes
+            if (authStatus.accessibleRoutes.includes('/admin/transactions') && authStatus.user?.role === 'admin') {
+                navigate('/admin');
+            } else if (authStatus.accessibleRoutes.includes('/scan') && authStatus.user?.role === 'employee') {
+                navigate('/scan');
+            } else {
+                navigate('/dashboard'); // Generic dashboard
+            }
+        }
+    }, [authStatus.isAuthenticated, authStatus.accessibleRoutes, authStatus.user, navigate]);
+
 
     const validateInputs = () => {
         if (!Phone || !/^\d{10}$/.test(Phone)) {
@@ -32,35 +47,13 @@ const Login = () => {
         event.preventDefault();
         if (!validateInputs()) return;
 
-        const body = {
-            mobile: Phone,
-            password: password,
-        };
+        setErrorMessage(""); // Clear previous error messages before new attempt
 
-        try {
-           
-            const response = await axios.post(`${Constants.API}auth/login`, body, {
-                headers: { "Content-Type": "application/json" },
-            });
-            console.log(response.data);
-            const { token, user, userID, role  } = response.data;
-            localStorage.setItem("jwtToken", token);
-            localStorage.setItem("user", user);
-            localStorage.setItem("userID", userID);
-            localStorage.setItem("role", role);
-
-            console.log(response.data);
-            // if(response.data.role === 'Employee'){
-            //     window.location.href = "/scan";
-            // } else if (response.data.role === 'Admin'){
-            //     window.location.href = "/admin";
-            // }
-        } catch (error) {
-            console.error("Login error:", error.response?.data || error.message);
-            setErrorMessage(
-                 "Failed to log in. Please try again."
-            );
+        const result = await login(Phone, password); // Call login from context
+        if (!result.success) {
+            setErrorMessage(result.message || "Failed to log in. Please try again.");
         }
+        // Navigation is now handled inside the login function in AuthContext
     };
 
     return (

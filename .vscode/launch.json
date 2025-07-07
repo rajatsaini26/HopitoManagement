@@ -1,0 +1,17 @@
+// .vscode/launch.json
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Launch Node Backend",
+      "skipFiles": ["<node_internals>/**"],
+      "program": "${workspaceFolder}/backend/server.js", // This path assumes server.js is directly inside a 'backend' folder
+      "envFile": "${workspaceFolder}/backend/.env",     // <--- IMPORTANT: This tells VS Code where your .env file is
+      "console": "integratedTerminal",
+      "restart": true, // Optional: Set to true if you want the debugger to restart on file changes
+      "internalConsoleOptions": "neverOpen" // Optional: Prevents an extra debug console from opening
+    }
+  ]
+}

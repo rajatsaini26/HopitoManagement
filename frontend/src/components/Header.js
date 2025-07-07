@@ -2,21 +2,26 @@ import React, { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import "./Header.css";
 import logo from "../assests/logo.svg";
-import { Logout } from "./API";
+import { useAuth } from "../context/AuthContext"; // Correctly import useAuth hook
 
 const Header = () => {
-  const [role, setRole] = useState(localStorage.getItem("role") || "");
-  const [user, setUser] = useState(localStorage.getItem("user") || "");
+  // Access authStatus and logout function from the AuthContext
+  const { authStatus, logout } = useAuth();
+
+  // Use state from authStatus directly, or local state if needed for initial render
+  const [role, setRole] = useState(authStatus.user?.role || localStorage.getItem("role") || "");
+  const [user, setUser] = useState(authStatus.user?.name || localStorage.getItem("user") || "");
   const [isDropdownOpen, setDropdownOpen] = useState(false);
 
   const location = useLocation();
   const navigate = useNavigate();
   const activeScreen = location.pathname;
 
+  // Update local state when authStatus changes (e.g., after login/logout)
   useEffect(() => {
-    setRole(localStorage.getItem("role") || "");
-    setUser(localStorage.getItem("user") || "");
-  }, []);
+    setRole(authStatus.user?.role || localStorage.getItem("role") || "");
+    setUser(authStatus.user?.name || localStorage.getItem("user") || "");
+  }, [authStatus.user]); // Depend on authStatus.user
 
   const toggleDropdown = () => {
     setDropdownOpen((prev) => !prev);
@@ -27,7 +32,7 @@ const Header = () => {
   };
 
   return (
-    <div>
+    <div className="container">
       {/* General navbar for non-login/admin pages */}
       {activeScreen !== "/" && role !== "Admin" && (
         <nav className="navbar">
@@ -40,7 +45,7 @@ const Header = () => {
             height="60"
           />
           <div className="nav-links">
-            {activeScreen !== "/scan" && activeScreen !== "/register" && (
+            {activeScreen !== "/scan" && activeScreen !== "/register" &&  (
               <button className="user-btn" onClick={jumpToScanner}>
                 Scan Card
               </button>
@@ -52,7 +57,7 @@ const Header = () => {
             )}
             {isDropdownOpen && (
               <div className="dropdown open">
-                <a onClick={Logout} className="dropdown-item">
+                <a onClick={logout} className="dropdown-item"> {/* Use logout from useAuth */}
                   Logout
                 </a>
               </div>
@@ -62,7 +67,7 @@ const Header = () => {
       )}
 
       {/* Admin-specific navbar */}
-      {role === "Admin" && activeScreen!="/" && (
+      {role === "Admin" && activeScreen !== "/" && (
         <nav className="navbar">
           <img
             className="brandLogo"
@@ -73,7 +78,7 @@ const Header = () => {
             height="60"
           />
             <div className="nav-links">
-              <button className="user-btn" onClick={Logout}>
+              <button className="user-btn" onClick={logout}> {/* Use logout from useAuth */}
                 Logout
               </button>
             </div>

@@ -2,13 +2,16 @@ import React, { useEffect, useState } from "react";
 import axios from "axios";
 import "../css/scanner.css";
 import Footer from "../components/Footer";
+import Header from "../components/Header";
+
 import Constants from "../components/Constants";
 import utils from "../components/Utils";
+
 
 const Scanner = () => {
 
     useEffect(() => {
-        utils.checkLoginCredentials();
+        // utils.checkLoginCredentials();
 
         // Create WebSocket connection
         const socket = new WebSocket("ws://localhost:8080");
@@ -70,6 +73,7 @@ const Scanner = () => {
     };
 
     return (
+        <div><Header />
         <div className="scanner-container">
             <div className="scanner-card">
                 <div className="scanner-text">
@@ -79,7 +83,7 @@ const Scanner = () => {
             </div>
 
             <p className="scanner-instructions">Please Scan Your Card</p>
-
+</div>
             <div className="btn-container" id="action-buttons"></div>
             <Footer />
         </div>

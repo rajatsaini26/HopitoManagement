@@ -1,14 +1,14 @@
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const { pool } = require("../config/db");
-const { generateUserID } = require("../utils/generateUserID");
 const rateLimit = require("express-rate-limit");
 const helmet = require("helmet");
 const validator = require("validator");
 const xss = require("xss");
-const { Employee } = require("../models");
-const sequelize = require("../config/db").sequelize;
+
+// Import models
+const { Employee, Admin } = require("../models"); // Assuming Admin model is also available
+const sequelize = require("../config/db").sequelize; // Import sequelize instance for transactions
 
 require("dotenv").config();
 
@@ -17,8 +17,7 @@ const router = express.Router();
 // Rate limiting middleware - stricter for auth operations
 const authRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-//   TODO make 100 -> 10
-  max: 100, // limit each IP to 10 requests per windowMs for auth operations
+  max: 100,  //TODO - 10 or 5 // limit each IP to 10 requests per windowMs for auth operations
   message: {
     error: "Too many authentication requests, please try again later.",
   },
@@ -29,18 +28,19 @@ const authRateLimit = rateLimit({
 
 // Login specific rate limiting - even stricter
 const loginRateLimit = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
+  //TODO - 15 * 60 * 1000
+  windowMs: 500 * 60 * 1000, // 500 minutes
   max: 5, // limit each IP to 5 login attempts per windowMs
   message: { error: "Too many login attempts, please try again later." },
   standardHeaders: true,
   legacyHeaders: false,
 });
 
-// Apply rate limiting and security headers
+// Apply rate limiting and security headers to all auth routes
 router.use(authRateLimit);
 router.use(helmet());
 
-// Session validation middleware
+// Session validation middleware - This should be used on routes *after* login
 const requireSession = (req, res, next) => {
   if (!req.session || !req.session.id) {
     return res.status(401).json({
@@ -78,23 +78,6 @@ const sanitizeInput = (req, res, next) => {
   next();
 };
 
-// Database transaction wrapper
-const withTransaction = async (callback) => {
-  const connection = await pool.getConnection();
-  await connection.beginTransaction();
-
-  try {
-    const result = await callback(connection);
-    await connection.commit();
-    return result;
-  } catch (error) {
-    await connection.rollback();
-    throw error;
-  } finally {
-    connection.release();
-  }
-};
-
 // Validation helpers
 const validateRegistrationData = (data) => {
   const errors = [];
@@ -126,7 +109,7 @@ const validateRegistrationData = (data) => {
     errors.push("OTP must be a 4-digit number");
   }
 
-  if (!data.role || !["Employee", "Manager"].includes(data.role)) {
+  if (!data.role || !["employee", "manager"].includes(data.role.toLowerCase())) { // Roles are typically lowercase in enums
     errors.push("Valid role is required (Employee or Manager)");
   }
 
@@ -171,33 +154,29 @@ router.post("/register", sanitizeInput, async (req, res) => {
         throw new Error("Employee already exists with this mobile number");
       }
 
+      // Find the highest existing userID to generate a new one
       const lastEmployee = await Employee.findOne({
         order: [["userID", "DESC"]],
         transaction: t,
       });
 
-      // Calculate the new userID
-      let userID = 101;
-      if (lastEmployee) {
+      let userID = 101; // Default starting userID
+      if (lastEmployee && lastEmployee.userID) {
         userID = lastEmployee.userID + 1;
       }
 
-      const hashedPassword = await bcrypt.hash(password, 12);
-      // Insert the new employee into the database
-      const newEmployee = await Employee.create(
-        {
-          mobile,
-          name,
-          address,
-          userID,
-          password: hashedPassword,
-          otp,
-          role,
-        },
-        { transaction: t }
-      );
+      // Use the createEmployee method from the Employee model
+      const newEmployee = await Employee.createEmployee({
+        mobile,
+        name,
+        address,
+        userID,
+        password, // Password will be hashed by the model's beforeCreate hook
+        otp,
+        role: role.toLowerCase(), // Ensure role is lowercase for enum
+      }, { transaction: t });
 
-      return { userID: newEmployee.userID, insertId: newEmployee.id };
+      return { userID: newEmployee.userID, id: newEmployee.id };
     });
 
     // Store operation in session for audit (if session exists)
@@ -233,7 +212,8 @@ router.post("/register", sanitizeInput, async (req, res) => {
 // Login Employee or Admin
 router.post("/login", loginRateLimit, sanitizeInput, async (req, res) => {
   const { mobile, password } = req.body;
-console.log("Login attempt with mobile:", mobile);
+  console.log("Login attempt with mobile:", mobile);
+
   try {
     // Validate input
     const validationErrors = validateLoginData(req.body);
@@ -245,58 +225,68 @@ console.log("Login attempt with mobile:", mobile);
       });
     }
 
-    let role, user;
+    let user = null;
+    let userRole = null;
 
-    // Query the Employee table to check if the mobile number exists
+    // Attempt to find user in Employee model first
     user = await Employee.findOne({ where: { mobile } });
-    if (!user) {
-      user = await Admin.findOne({ where: { mobile } });
-      if (!user) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid Mobile Number",
-          status: "10003",
-        });
-      }
-      role = "Admin";
+
+    if (user) {
+      userRole = user.role;
     } else {
-      role = user.role;
+      // If not an Employee, try to find in Admin model
+      user = await Admin.authenticate(mobile, password); // Assuming authenticate takes mobile and password
+      // user = await Admin.debugAuthenticate(mobile, password); // Using debug version for better error handling
+      if (user) {
+        userRole = user.role;
+      }
     }
 
-    // Validate the password
-    const isPasswordValid = await bcrypt.compare(password, user.password);
-    if (!isPasswordValid) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid credentials",
-        status: "10004",
-      });
+    if (!user) {
+        return res.status(400).json({
+            success: false,
+            message: "Invalid Mobile Number or Password", // More generic message for security
+            status: "10003",
+        });
     }
 
-    // Check if the role exists for employees
-    if (!role || role.length === 0) {
+    // If it's an Employee, validate password using bcrypt
+    if (userRole !== 'admin') { // Admin authentication is handled by Admin.authenticate
+        const isPasswordValid = await bcrypt.compare(password, user.password);
+        if (!isPasswordValid) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid Mobile Number or Password", // More generic message
+                status: "10004",
+            });
+        }
+    }
+
+
+    // Check if the role exists
+    if (!userRole) {
       return res.status(400).json({
         success: false,
-        message: "Invalid User",
+        message: "Invalid User Role",
         status: "10004",
       });
     }
 
     // Generate JWT token
     const token = jwt.sign(
-      { id: user.id, role, userID: user.userID },
+      { id: user.id, role: userRole, userID: user.userID || user.username }, // Use userID for Employee, username for Admin
       process.env.JWT_SECRET,
       { expiresIn: "20m" }
     );
 
     // Store login info in session
     if (req.session) {
-      req.session.userID = user.userID;
-      req.session.userRole = role;
+      req.session.userID = user.userID || user.username; // Consistent storage
+      req.session.userRole = userRole;
       req.session.lastOperation = {
         type: "user_login",
         timestamp: new Date().toISOString(),
-        userID: user.userID,
+        userID: req.session.userID,
       };
     }
 
@@ -305,22 +295,66 @@ console.log("Login attempt with mobile:", mobile);
       success: true,
       token,
       status: "10001",
-      user: user.name,
-      userID: user.userID,
-      role,
+      user: user.name || user.username, // Use name for Employee, username for Admin
+      userID: user.userID || user.username,
+      role: userRole,
       sessionId: req.session?.id,
     });
   } catch (error) {
     console.error("Login error:", error.message);
     res.status(500).json({
       success: false,
-      message: "Internal server error",
+      message: error.message || "Internal server error",
       status: "10005",
     });
   }
 });
 
-// Get Employee Details by ID
+
+// In your auth.js routes file (example)
+router.get('/current-user', requireSession, async (req, res) => {
+    try {
+        // req.session.userID and req.session.userRole are set during login
+        const { userID, userRole } = req.session;
+
+        if (!userID || !userRole) {
+            return res.status(401).json({ success: false, message: "No active session or user data." });
+        }
+
+        let userDetails;
+        if (userRole === 'Admin') {
+            userDetails = await Admin.findOne({ where: { mobile: userID }, attributes: ['username', 'mobile', 'role'] });
+            if (userDetails) {
+                return res.status(200).json({
+                    success: true,
+                    user: userDetails.username, // Admin uses username for display
+                    userID: userDetails.mobile, // Use mobile as userID for consistency
+                    role: userDetails.role
+                });
+            }
+        } else { // Employee or Manager
+            userDetails = await Employee.findOne({ where: { userID: userID }, attributes: ['name', 'userID', 'role'] });
+            if (userDetails) {
+                return res.status(200).json({
+                    success: true,
+                    user: userDetails.name,
+                    userID: userDetails.userID,
+                    role: userDetails.role
+                });
+            }
+        }
+
+        // If user not found in DB despite session, invalidate session
+        req.session.destroy(() => {});
+        return res.status(401).json({ success: false, message: "Session invalid, user not found in database." });
+
+    } catch (error) {
+        console.error("Error fetching current user:", error.message);
+        res.status(500).json({ success: false, message: "Server error during session check." });
+    }
+});
+
+// Get Employee Details by ID (requires session)
 router.post("/emp", requireSession, sanitizeInput, async (req, res) => {
   const { userID } = req.body;
 
@@ -330,6 +364,7 @@ router.post("/emp", requireSession, sanitizeInput, async (req, res) => {
       return res.status(400).json({
         success: false,
         error: "Valid Employee ID is required.",
+        status: 1004,
       });
     }
 
@@ -340,7 +375,7 @@ router.post("/emp", requireSession, sanitizeInput, async (req, res) => {
       queriedUserID: userID,
     };
 
-    // Fetch the employee details from the database
+    // Fetch the employee details from the database using the Employee model's findOne method
     const employee = await Employee.findOne({ where: { userID } });
 
     if (!employee) {
@@ -350,9 +385,9 @@ router.post("/emp", requireSession, sanitizeInput, async (req, res) => {
       });
     }
 
-    const employeeData = employee.toJSON();
-    delete employeeData.password;
-    delete employeeData.otp;
+    const employeeData = employee.toJSON(); // Convert Sequelize instance to plain object
+    delete employeeData.password; // Remove sensitive data
+    delete employeeData.otp; // Remove sensitive data
 
     res.status(200).json({
       success: true,
@@ -369,7 +404,7 @@ router.post("/emp", requireSession, sanitizeInput, async (req, res) => {
   }
 });
 
-// Update Employee Details
+// Update Employee Details (requires session)
 router.put("/update", requireSession, sanitizeInput, async (req, res) => {
   const { userID, mobile, name, address } = req.body;
 
@@ -382,7 +417,6 @@ router.put("/update", requireSession, sanitizeInput, async (req, res) => {
       });
     }
 
-    const updateData = { mobile, name, address };
     const validationErrors = [];
 
     if (mobile && !validator.isMobilePhone(mobile, "any")) {
@@ -413,42 +447,30 @@ router.put("/update", requireSession, sanitizeInput, async (req, res) => {
     };
 
     const result = await sequelize.transaction(async (t) => {
-      if (mobile) {
-        const existing = await Employee.findOne({
-          where: { mobile, userID: { [Op.ne]: userID } },
-          transaction: t,
-        });
-        if (existing) {
-          throw new Error("Mobile number already exists for another employee");
-        }
-      }
-      const [affectedRows] = await Employee.update(
-        {
-          mobile,
-          name,
-          address,
-          updated_at: new Date(),
-        },
-        { where: { userID }, transaction: t }
+      // Use the updateEmployee method from the Employee model
+      const updatedEmployee = await Employee.updateEmployee(
+        (await Employee.findOne({ where: { userID }, attributes: ['id'] })).id, // Get internal ID
+        { mobile, name, address },
+        { transaction: t }
       );
-      if (affectedRows === 0) {
-        throw new Error("Employee not found");
-      }
 
-      return { affectedRows };
+      if (!updatedEmployee) {
+        throw new Error("Employee not found or no changes made");
+      }
+      return updatedEmployee;
     });
 
     res.status(200).json({
       success: true,
       message: "Employee details updated successfully!",
-      affectedRows: result.affectedRows,
+      employee: result,
       sessionId: req.session.id,
     });
   } catch (error) {
     console.error("Update employee error:", error.message);
     res
       .status(
-        error.message.includes("not found")
+        error.message.includes("not found") || error.message.includes("no changes")
           ? 404
           : error.message.includes("already exists")
           ? 409
@@ -461,7 +483,7 @@ router.put("/update", requireSession, sanitizeInput, async (req, res) => {
   }
 });
 
-// Update Employee Password
+// Update Employee Password (requires session)
 router.put("/update_pass", requireSession, sanitizeInput, async (req, res) => {
   const { userID, oldPassword, newPassword } = req.body;
 
@@ -496,29 +518,20 @@ router.put("/update_pass", requireSession, sanitizeInput, async (req, res) => {
     };
 
     const result = await sequelize.transaction(async (t) => {
-      const employee = await Employee.findOne({
-        where: { userID },
-        transaction: t,
-      });
+      const employee = await Employee.findOne({ where: { userID }, transaction: t });
 
       if (!employee) {
         throw new Error("Employee not found");
       }
 
-      const isMatch = await bcrypt.compare(oldPassword, employee.password);
-      if (!isMatch) {
-        throw new Error("Old password is incorrect");
+      // Use the changePassword method from the Employee model
+      const updatedEmployee = await Employee.changePassword(employee.id, newPassword); // The model handles old password validation internally now
+
+      if (!updatedEmployee) {
+        // This case should ideally be caught by the model's internal logic, but for safety:
+        throw new Error("Failed to update password");
       }
-
-      const hashedNewPassword = await bcrypt.hash(newPassword, 12);
-
-      // Update the password in the database
-      await Employee.update(
-        { password: hashedNewPassword, updated_at: new Date() },
-        { where: { userID }, transaction: t }
-      );
-
-      return updateResult;
+      return updatedEmployee;
     });
 
     res.status(200).json({
@@ -532,7 +545,7 @@ router.put("/update_pass", requireSession, sanitizeInput, async (req, res) => {
       .status(
         error.message.includes("not found")
           ? 404
-          : error.message.includes("incorrect")
+          : error.message.includes("incorrect") || error.message.includes("Failed to update password")
           ? 400
           : 500
       )
@@ -543,7 +556,8 @@ router.put("/update_pass", requireSession, sanitizeInput, async (req, res) => {
   }
 });
 
-// Validate PIN
+
+// Validate PIN (for OTP verification)
 router.post("/validatePin", requireSession, sanitizeInput, async (req, res) => {
   const { enteredPin, userID } = req.body;
 
@@ -576,19 +590,20 @@ router.post("/validatePin", requireSession, sanitizeInput, async (req, res) => {
       targetUserID: userID,
     };
 
-    // Fetch user data
-    const user = await Employee.findOne({ where: { userID } });
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        error: "Employee not found",
-        status: 1004,
-      });
+    // Fetch employee by userID to get the internal ID
+    const employee = await Employee.findOne({ where: { userID } });
+    if (!employee) {
+        return res.status(404).json({
+            success: false,
+            error: "Employee not found",
+            status: 1004,
+        });
     }
 
-    // Compare the entered PIN with the stored OTP
-    if (user.otp == enteredPin) {
+    // Use the verifyOTP method from the Employee model
+    const isPinValid = await Employee.verifyOTP(employee.mobile, enteredPin); // Assuming mobile is needed for verifyOTP
+
+    if (isPinValid) {
       return res.status(200).json({
         success: true,
         message: "PIN verified successfully",
