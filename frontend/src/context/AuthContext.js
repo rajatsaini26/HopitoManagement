@@ -1,8 +1,8 @@
 // src/context/AuthContext.js
-import React, { createContext, useState, useEffect, useContext } from 'react';
-import axios from 'axios';
-import { useNavigate } from 'react-router-dom'; // Use useNavigate for navigation
-import Constants from '../components/Constants'; // Assuming Constants is available
+import React, { createContext, useState, useEffect, useContext } from "react";
+import axios from "axios";
+import { useNavigate } from "react-router-dom"; // Use useNavigate for navigation
+import Constants from "../components/Constants"; // Assuming Constants is available
 
 const AuthContext = createContext(null);
 
@@ -20,21 +20,25 @@ export const AuthProvider = ({ children }) => {
     try {
       // Ensure the correct API path for routes, based on your backend setup
       // If it's /api/games/routes, use that. If it's just /api/routes, adjust.
-      const response = await axios.get(`${Constants.API}nav/checkRoutes`, { // Assuming /api/games/routes
-        withCredentials: true // Crucial for sending session cookie
+      const response = await axios.get(`${Constants.API}nav/checkRoutes`, {
+        // Assuming /api/games/routes
+        withCredentials: true, // Crucial for sending session cookie
       });
-      console.log('Fetched accessible routes:', response.data.routes);
+      console.log("Fetched accessible routes:", response.data.routes);
       if (response.status === 200) {
-        setAuthStatus(prev => ({
+        setAuthStatus((prev) => ({
           ...prev,
-          accessibleRoutes: response.data.routes // Store the array of routes
+          accessibleRoutes: response.data.routes, // Store the array of routes
         }));
         return response.data.routes;
       }
       return [];
     } catch (error) {
-      console.error('Failed to fetch accessible routes:', error.response?.data || error.message);
-      setAuthStatus(prev => ({ ...prev, accessibleRoutes: [] }));
+      console.error(
+        "Failed to fetch accessible routes:",
+        error.response?.data || error.message
+      );
+      setAuthStatus((prev) => ({ ...prev, accessibleRoutes: [] }));
       return [];
     }
   };
@@ -42,10 +46,14 @@ export const AuthProvider = ({ children }) => {
   // Login function
   const login = async (mobile, password) => {
     try {
-      const response = await axios.post(`${Constants.API}auth/login`, { mobile, password }, {
-        headers: { "Content-Type": "application/json" },
-        withCredentials: true // Crucial for receiving and sending session cookie
-      });
+      const response = await axios.post(
+        `${Constants.API}auth/login`,
+        { mobile, password },
+        {
+          headers: { "Content-Type": "application/json" },
+          withCredentials: true, // Crucial for receiving and sending session cookie
+        }
+      );
 
       const { user, userID, role } = response.data; // Backend sends 'user' (name), 'userID', 'role'
 
@@ -58,7 +66,7 @@ export const AuthProvider = ({ children }) => {
       localStorage.setItem("userID", userID);
       localStorage.setItem("role", role);
 
-      setAuthStatus(prev => ({
+      setAuthStatus((prev) => ({
         ...prev,
         isAuthenticated: true,
         user: { id: userID, name: user, role: role },
@@ -68,30 +76,45 @@ export const AuthProvider = ({ children }) => {
       const routes = await fetchAccessibleRoutes(role);
 
       // Navigate based on role or a default route from accessible routes
-      if (routes.includes('/admin/transactions') && role === 'admin') { // Check if Admin has access to Admin dashboard
-        navigate('/admin');
-      } else if (routes.includes('/scan') && role === 'employee') { // Check if Employee has access to scan
-        navigate('/scan');
+      if (routes.includes("/admin/transactions") && role === "admin") {
+        // Check if Admin has access to Admin dashboard
+        navigate("/admin");
+      } else if (routes.includes("/scan") && role === "employee") {
+        // Check if Employee has access to scan
+        navigate("/scan");
       } else {
         // Fallback or navigate to a general dashboard/home if no specific route matches
-        navigate('/dashboard'); // Or any default route
+        navigate("/dashboard"); // Or any default route
       }
 
       return { success: true };
-
     } catch (error) {
       console.error("Login failed:", error.response?.data || error.message);
-      setAuthStatus(prev => ({ ...prev, isAuthenticated: false, user: null, accessibleRoutes: [] }));
-      return { success: false, message: error.response?.data?.message || "Failed to log in. Please try again." };
+      setAuthStatus((prev) => ({
+        ...prev,
+        isAuthenticated: false,
+        user: null,
+        accessibleRoutes: [],
+      }));
+      return {
+        success: false,
+        message:
+          error.response?.data?.message ||
+          "Failed to log in. Please try again.",
+      };
     }
   };
 
   // Logout function
-   const logout = async () => {
+  const logout = async () => {
     try {
-      await axios.post(`${Constants.API}auth/logout`, {}, {
-        withCredentials: true // Crucial for sending session cookie to destroy it
-      });
+      await axios.post(
+        `${Constants.API}auth/logout`,
+        {},
+        {
+          withCredentials: true, // Crucial for sending session cookie to destroy it
+        }
+      );
     } catch (error) {
       console.error("Logout failed:", error.response?.data || error.message);
       // Even if API fails, clear local state for UX to ensure user can try logging in again
@@ -108,7 +131,7 @@ export const AuthProvider = ({ children }) => {
         accessibleRoutes: [],
         loading: false, // Not loading after logout
       });
-      navigate('/login'); // Redirect to login page
+      navigate("/login"); // Redirect to login page
     }
   };
 
@@ -117,13 +140,14 @@ export const AuthProvider = ({ children }) => {
     const checkAuthStatusOnLoad = async () => {
       try {
         // This endpoint should return user info if session is valid, else 401
-        const response = await axios.get(`${Constants.API}auth/current-user`, { // You need to create this endpoint in auth.js
-          withCredentials: true
+        const response = await axios.get(`${Constants.API}auth/current-user`, {
+          // You need to create this endpoint in auth.js
+          withCredentials: true,
         });
-
+        console.log(response);
         if (response.status === 200) {
           const { user, userID, role } = response.data;
-          setAuthStatus(prev => ({
+          setAuthStatus((prev) => ({
             ...prev,
             isAuthenticated: true,
             user: { id: userID, name: user, role: role },
@@ -131,13 +155,26 @@ export const AuthProvider = ({ children }) => {
           await fetchAccessibleRoutes(role); // Fetch routes for the re-authenticated user
         } else {
           // Session invalid
-          setAuthStatus(prev => ({ ...prev, isAuthenticated: false, user: null, accessibleRoutes: [] }));
+          setAuthStatus((prev) => ({
+            ...prev,
+            isAuthenticated: false,
+            user: null,
+            accessibleRoutes: [],
+          }));
         }
       } catch (error) {
-        console.error("Initial auth check failed:", error.response?.data || error.message);
-        setAuthStatus(prev => ({ ...prev, isAuthenticated: false, user: null, accessibleRoutes: [] }));
+        console.error(
+          "Initial auth check failed:",
+          error.response?.data || error.message
+        );
+        setAuthStatus((prev) => ({
+          ...prev,
+          isAuthenticated: false,
+          user: null,
+          accessibleRoutes: [],
+        }));
       } finally {
-        setAuthStatus(prev => ({ ...prev, loading: false }));
+        setAuthStatus((prev) => ({ ...prev, loading: false }));
       }
     };
 
@@ -145,7 +182,15 @@ export const AuthProvider = ({ children }) => {
   }, []); // Run once on component mount
 
   return (
-    <AuthContext.Provider value={{ authStatus, login, logout }}>
+    <AuthContext.Provider
+      value={{
+        authStatus,
+        login,
+        logout,
+        setAuthStatus,
+        fetchAccessibleRoutes,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

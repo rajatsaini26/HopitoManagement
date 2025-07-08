@@ -13,7 +13,7 @@ const ManageGames = () => {
 
   useEffect(() => {
     fetchGames();
-        utils.checkLoginCredentials();
+        
 
   }, []);
 

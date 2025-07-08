@@ -5,25 +5,22 @@ import Constants from "../components/Constants";
 import { format } from "date-fns";
 import "../css/ManageEmp.css";
 import utils from "../components/Utils";
+import { useAPI } from "../components/useAPI";
 
 const ManageEmp = () => {
   const [employees, setEmployees] = useState([]); // Ensure it's initialized as an array
   const [errorMessage, setErrorMessage] = useState("");
   const navigate = useNavigate();
-
+  const { getEmployees } = useAPI();
   useEffect(() => {
     fetchEmployees();
-        utils.checkLoginCredentials();
 
   }, []);
 
   // Fetch employees from the backend
   const fetchEmployees = async () => {
     try {
-      const response = await axios.get(`${Constants.API}admin/emp_list`, {
-        headers: { "Content-Type": "application/json" },
-      });
-
+      const response = await getEmployees();
       // Ensure response structure matches expectations
       if (response.data && response.data.status !== "10003") {
         console.log(response.data);
@@ -83,49 +80,61 @@ const ManageEmp = () => {
       {errorMessage && <div style={{ color: "red" }}>{errorMessage}</div>}
             <div style={{width:"95%"}}>
                 <table border="1" style={{ textAlign: "left" }}>
-                    <thead>
-                        <tr>
-                            <th>Employee ID</th>
-                            <th>Name</th>
-                            <th>Post</th>
-                            <th>Mobile Number</th>
-                            <th>Joining Date</th>
-                            <th>Last Day</th>
-                            <th>Address</th>
+                 <thead>
+  <tr>
+    <th>Employee ID</th>
+    <th>Name</th>
+    <th>Post</th>
+    <th>Mobile Number</th>
+    <th>Joining Date</th>
+    <th>Last Day</th>
+    <th>Address</th>
+    <th>Actions</th> {/* New column for Edit button */}
+  </tr>
+</thead>
+<tbody>
+  {employees.length > 0 ? (
+    employees.map((employee) => (
+      <tr key={employee.userID}>
+        <td>{employee.userID}</td>
+        <td>{employee.name}</td>
+        <td>{employee.role}</td>
+        <td>{employee.mobile}</td>
+        <td>
+          {employee.created_at
+            ? format(new Date(employee.created_at), "dd MMMM, yyyy")
+            : "N/A"}
+        </td>
+        <td>
+          {employee.lastDay
+            ? format(new Date(employee.lastDay), "MMMM dd, yyyy")
+            : "N/A"}
+        </td>
+        <td>{employee.address}</td>
+        <td>
+          <button
+            className="button"
+            style={{ backgroundColor: "#007bff", color: "white" }}
+            onClick={() =>
+              navigate(`/admin/updateEmp`, {
+                state: { employeeID: employee.userID }, // Send via navigation state
+              })
+            }
+          >
+            Edit
+          </button>
+        </td>
+      </tr>
+    ))
+  ) : (
+    <tr>
+      <td colSpan="8" style={{ textAlign: "center" }}>
+        No employees found.
+      </td>
+    </tr>
+  )}
+</tbody>
 
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {employees.length > 0 ? (
-                            employees.map((employee) => (
-                                <tr key={employee.userID}>
-                                    <td>{employee.userID}</td>
-                                    <td>{employee.name}</td>
-                                    <td>{employee.role}</td>
-                                    <td>{employee.mobile}</td>
-                                    <td>
-                                        {/* Format the created_at date as joining date */}
-                                        {employee.created_at
-                                            ? format(new Date(employee.created_at), 'dd MMMM, yyyy')
-                                            : 'N/A'}
-                                    </td>
-                                    <td>
-                                        {/* Format the lastDay date if available */}
-                                        {employee.lastDay
-                                            ? format(new Date(employee.lastDay), 'MMMM dd, yyyy')
-                                            : 'N/A'}
-                                    </td>
-                                    <td>{employee.address}</td>
-                                </tr>
-                            ))
-                        ) : (
-                            <tr>
-                                <td colSpan="6" style={{ textAlign: "center" }}>
-                                    No employees found.
-                                </td>
-                            </tr>
-                        )}
-                    </tbody>
                 </table>
 </div>
     </div>

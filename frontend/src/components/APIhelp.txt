@@ -1,0 +1,299 @@
+import React, { useEffect, useState } from 'react';
+import { useAPI } from './hooks/useAPI';
+import apiHandler from './utils/APIHandler';
+
+// ================== EXAMPLE 1: Login Component ==================
+const LoginComponent = () => {
+  const { login, loading, error, success } = useAPI();
+  const [formData, setFormData] = useState({ mobile: '', password: '' });
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    try {
+      await login(formData);
+      // Navigation is handled automatically by the hook
+    } catch (error) {
+      // Error is automatically set in the hook state
+      console.error('Login failed:', error);
+    }
+  };
+
+  return (
+    <div>
+      <form onSubmit={handleLogin}>
+        <input
+          type="tel"
+          placeholder="Mobile"
+          value={formData.mobile}
+          onChange={(e) => setFormData(prev => ({ ...prev, mobile: e.target.value }))}
+          disabled={loading}
+        />
+        <input
+          type="password"
+          placeholder="Password"
+          value={formData.password}
+          onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
+          disabled={loading}
+        />
+        <button type="submit" disabled={loading}>
+          {loading ? 'Logging in...' : 'Login'}
+        </button>
+      </form>
+      
+      {error && <div className="error">{error}</div>}
+      {success && <div className="success">{success}</div>}
+    </div>
+  );
+};
+
+// ================== EXAMPLE 2: Employee Management Component ==================
+const EmployeeManagement = () => {
+  const { 
+    getEmployees, 
+    createEmployee, 
+    loading, 
+    error, 
+    success, 
+    apiResponse 
+  } = useAPI();
+  
+  const [employees, setEmployees] = useState([]);
+  const [newEmployee, setNewEmployee] = useState({ name: '', mobile: '', role: '' });
+
+  useEffect(() => {
+    loadEmployees();
+  }, []);
+
+  const loadEmployees = async () => {
+    try {
+      const result = await getEmployees();
+      setEmployees(result.data || []);
+    } catch (error) {
+      console.error('Failed to load employees:', error);
+    }
+  };
+
+  const handleCreateEmployee = async (e) => {
+    e.preventDefault();
+    try {
+      await createEmployee(newEmployee);
+      setNewEmployee({ name: '', mobile: '', role: '' });
+      loadEmployees(); // Refresh the list
+    } catch (error) {
+      console.error('Failed to create employee:', error);
+    }
+  };
+
+  return (
+    <div>
+      <h2>Employee Management</h2>
+      
+      {/* Create Employee Form */}
+      <form onSubmit={handleCreateEmployee}>
+        <input
+          type="text"
+          placeholder="Name"
+          value={newEmployee.name}
+          onChange={(e) => setNewEmployee(prev => ({ ...prev, name: e.target.value }))}
+          disabled={loading}
+        />
+        <input
+          type="tel"
+          placeholder="Mobile"
+          value={newEmployee.mobile}
+          onChange={(e) => setNewEmployee(prev => ({ ...prev, mobile: e.target.value }))}
+          disabled={loading}
+        />
+        <select
+          value={newEmployee.role}
+          onChange={(e) => setNewEmployee(prev => ({ ...prev, role: e.target.value }))}
+          disabled={loading}
+        >
+          <option value="">Select Role</option>
+          <option value="Admin">Admin</option>
+          <option value="Cashier">Cashier</option>
+        </select>
+        <button type="submit" disabled={loading}>
+          {loading ? 'Creating...' : 'Create Employee'}
+        </button>
+      </form>
+
+      {/* Employee List */}
+      <div>
+        <h3>Employee List</h3>
+        {employees.map(employee => (
+          <div key={employee.id} className="employee-item">
+            <span>{employee.name} - {employee.mobile} - {employee.role}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Status Messages */}
+      {error && <div className="error">{error}</div>}
+      {success && <div className="success">{success}</div>}
+      {loading && <div className="loading">Loading...</div>}
+    </div>
+  );
+};
+
+// ================== EXAMPLE 3: Card Management Component ==================
+const CardManagement = () => {
+  const { 
+    checkCard, 
+    rechargeCard, 
+    getCardDetails, 
+    loading, 
+    error, 
+    success, 
+    apiResponse 
+  } = useAPI();
+  
+  const [cardId, setCardId] = useState('');
+  const [rechargeAmount, setRechargeAmount] = useState('');
+  const [cardDetails, setCardDetails] = useState(null);
+
+  const handleCheckCard = async () => {
+    try {
+      const result = await checkCard({ cardId });
+      console.log('Card check result:', result);
+    } catch (error) {
+      console.error('Card check failed:', error);
+    }
+  };
+
+  const handleRechargeCard = async () => {
+    try {
+      await rechargeCard({ cardId, amount: parseFloat(rechargeAmount) });
+      setRechargeAmount('');
+    } catch (error) {
+      console.error('Recharge failed:', error);
+    }
+  };
+
+  const handleGetCardDetails = async () => {
+    try {
+      const result = await getCardDetails(cardId);
+      setCardDetails(result.data);
+    } catch (error) {
+      console.error('Failed to get card details:', error);
+    }
+  };
+
+  return (
+    <div>
+      <h2>Card Management</h2>
+      
+      <div>
+        <input
+          type="text"
+          placeholder="Card ID"
+          value={cardId}
+          onChange={(e) => setCardId(e.target.value)}
+          disabled={loading}
+        />
+        <button onClick={handleCheckCard} disabled={loading || !cardId}>
+          Check Card
+        </button>
+        <button onClick={handleGetCardDetails} disabled={loading || !cardId}>
+          Get Details
+        </button>
+      </div>
+
+      <div>
+        <input
+          type="number"
+          placeholder="Recharge Amount"
+          value={rechargeAmount}
+          onChange={(e) => setRechargeAmount(e.target.value)}
+          disabled={loading}
+        />
+        <button onClick={handleRechargeCard} disabled={loading || !cardId || !rechargeAmount}>
+          Recharge Card
+        </button>
+      </div>
+
+      {/* Card Details Display */}
+      {cardDetails && (
+        <div>
+          <h3>Card Details</h3>
+          <p>Balance: ${cardDetails.balance}</p>
+          <p>Status: {cardDetails.status}</p>
+          {/* Add more card details as needed */}
+        </div>
+      )}
+
+      {/* Status Messages */}
+      {error && <div className="error">{error}</div>}
+      {success && <div className="success">{success}</div>}
+      {loading && <div className="loading">Loading...</div>}
+    </div>
+  );
+};
+
+// ================== EXAMPLE 4: Direct API Handler Usage (without React) ==================
+// If you need to use the API handler outside of React components
+
+const handleDirectAPICall = async () => {
+  try {
+    // For calls that don't need context, use the handler directly
+    const games = await apiHandler.getGames();
+    console.log('Games:', games.data);
+    
+    const stats = await apiHandler.getStats();
+    console.log('Stats:', stats.data);
+    
+    // For calls that need context, you'll need to pass the context functions
+    // This would typically be done from within a React component
+    
+  } catch (error) {
+    console.error('API call failed:', error);
+  }
+};
+
+// ================== EXAMPLE 5: Advanced Usage with Custom Options ==================
+const AdvancedUsage = () => {
+  const { login, logout, callAPI, loading, error, success } = useAPI();
+
+  const handleLoginWithoutNavigation = async () => {
+    try {
+      // Prevent automatic navigation
+      await login({ mobile: '1234567890', password: 'password' }, { preventNavigation: true });
+      // Handle custom logic here
+      console.log('Login successful, but staying on current page');
+    } catch (error) {
+      console.error('Login failed:', error);
+    }
+  };
+
+  const handleCustomAPICall = async () => {
+    try {
+      // Use the generic callAPI method for custom handling
+      const result = await callAPI(apiHandler.getStats);
+      console.log('Custom API call result:', result);
+    } catch (error) {
+      console.error('Custom API call failed:', error);
+    }
+  };
+
+  return (
+    <div>
+      <button onClick={handleLoginWithoutNavigation}>
+        Login Without Navigation
+      </button>
+      <button onClick={handleCustomAPICall}>
+        Custom API Call
+      </button>
+      
+      {loading && <div>Loading...</div>}
+      {error && <div>Error: {error}</div>}
+      {success && <div>Success: {success}</div>}
+    </div>
+  );
+};
+
+export { 
+  LoginComponent, 
+  EmployeeManagement, 
+  CardManagement, 
+  AdvancedUsage 
+};

@@ -25,11 +25,13 @@ const RootNavigation = () => {
                 <Route path="/scan" element={<Scanner />} />
                 <Route path="/recharge" element={<Recharge />}/>
                 <Route path="/add" element={<AddCard />} />
-                <Route path="/register" element={<Registration />} />
                 <Route path="/" element={<Login />} />
                 <Route path="/admin" element={<AdminPanel />} />
+                
                 <Route path="/admin/reports" element={<Transactions />} />
                 <Route path ="/admin/emps" element={<ManageEmp/>}/>
+                <Route path="/register" element={<Registration />} />
+               
                 <Route path="/admin/updateEmp" element={<UpdateEmployeeDetails />} />
                 <Route path="/admin/games" element={<ManageGames/>} />
                 <Route path="/admin/addgames" element={<AddGames/>} />

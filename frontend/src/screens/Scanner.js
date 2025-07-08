@@ -11,7 +11,7 @@ import utils from "../components/Utils";
 const Scanner = () => {
 
     useEffect(() => {
-        // utils.checkLoginCredentials();
+        // 
 
         // Create WebSocket connection
         const socket = new WebSocket("ws://localhost:8080");

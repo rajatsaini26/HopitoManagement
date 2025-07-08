@@ -28,7 +28,7 @@ const History = () => {
   const [cashTotal, setCashTotal] = useState(0);
 
   useEffect(() => {
-    utils.checkLoginCredentials();
+    
     calculateTotals();
   }, [historyData]);
 

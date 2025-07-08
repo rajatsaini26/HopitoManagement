@@ -14,7 +14,7 @@ const AddGames = () => {
   const navigate = useNavigate();
 
   useEffect(()=>{
-        utils.checkLoginCredentials();
+        
   });
   const handleNewGame = async (e) => {
     e.preventDefault();

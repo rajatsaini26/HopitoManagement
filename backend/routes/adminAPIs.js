@@ -39,7 +39,7 @@ const requireSession = (req, res, next) => {
 // Admin role validation middleware
 const requireAdminRole = (req, res, next) => {
     // Check if the session exists and userRole is defined, and if it's not 'Admin'
-    if (!req.session || !req.session.userRole || req.session.userRole !== 'Admin') {
+    if (!req.session || !req.session.userRole || req.session.userRole !== 'admin') {
         return res.status(403).json({
             success: false,
             error: "Admin access required",

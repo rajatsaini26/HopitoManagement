@@ -281,7 +281,7 @@ router.post("/login", loginRateLimit, sanitizeInput, async (req, res) => {
 
     // Store login info in session
     if (req.session) {
-      req.session.userID = user.userID || user.username; // Consistent storage
+      req.session.userID = user.mobile; // Consistent storage
       req.session.userRole = userRole;
       req.session.lastOperation = {
         type: "user_login",
@@ -322,7 +322,7 @@ router.get('/current-user', requireSession, async (req, res) => {
         }
 
         let userDetails;
-        if (userRole === 'Admin') {
+        if (userRole === 'admin') {
             userDetails = await Admin.findOne({ where: { mobile: userID }, attributes: ['username', 'mobile', 'role'] });
             if (userDetails) {
                 return res.status(200).json({
@@ -355,7 +355,7 @@ router.get('/current-user', requireSession, async (req, res) => {
 });
 
 // Get Employee Details by ID (requires session)
-router.post("/emp", requireSession, sanitizeInput, async (req, res) => {
+router.post("/emp", requireSession ,sanitizeInput, async (req, res) => {
   const { userID } = req.body;
 
   try {

@@ -10,7 +10,6 @@
 
 /* Navbar Style */
 .container{
-    position: sticky;
 }
 .navbar {
     background: linear-gradient(160deg, var(--primary-color), var(--secondary-color));

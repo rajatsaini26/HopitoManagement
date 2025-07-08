@@ -48,98 +48,81 @@ const sanitizeInput = (req, res, next) => {
 // Define routes accessible by different roles
 const routesByRole = {
   employee: [
-    // Auth routes (employee specific)
-    '/auth/emp',         // Get own details
-    '/auth/update',      // Update own details
-    '/auth/update_pass', // Change own password
-    '/auth/validatePin', // Validate PIN for operations
-    '/auth/logout',      // Logout
+    // // Auth routes (employee specific)
+    // '/auth/emp',         // Get own details
+    // '/auth/update',      // Update own details
+    // '/auth/update_pass', // Change own password
+    // '/auth/validatePin', // Validate PIN for operations
+    // '/auth/logout',      // Logout
 
-    // Card routes (employee specific - assuming they can perform these actions)
-    '/card/recharge',        // Recharge customer cards
-    '/card/start-session',   // Start game sessions (deduct balance)
-    '/card/check-card',      // Check card details
-    '/card/transactions/:card', // View specific card's transaction history
-    '/card/details/:card',   // View specific card's details (masked for sensitive info)
+    // // Card routes (employee specific - assuming they can perform these actions)
+    // '/card/recharge',        // Recharge customer cards
+    // '/card/start-session',   // Start game sessions (deduct balance)
+    // '/card/check-card',      // Check card details
+    // '/card/transactions/:card', // View specific card's transaction history
+    // '/card/details/:card',   // View specific card's details (masked for sensitive info)
 
-    // Games routes (employee specific)
-    '/games/gamedetails',      // Get details of a specific game
-    '/games/gameList',         // Get list of all games
-    '/games/start-game-signal', // Signal start of arcade game
-    '/games/stop-game-signal'   // Signal stop of arcade game
+    // // Games routes (employee specific)
+    // '/games/gamedetails',      // Get details of a specific game
+    // '/games/gameList',         // Get list of all games
+    // '/games/start-game-signal', // Signal start of arcade game
+    // '/games/stop-game-signal'   // Signal stop of arcade game
+    '/scan',
+    '/recharge',
+    '/add'
   ],
   manager: [
     // Auth routes
-    '/auth/emp',
-    '/auth/update',
-    '/auth/update_pass',
-    '/auth/validatePin',
-    '/auth/logout',
+    // '/auth/emp',
+    // '/auth/update',
+    // '/auth/update_pass',
+    // '/auth/validatePin',
+    // '/auth/logout',
 
-    // Card routes
-    '/card/issue',           // Issue new cards
-    '/card/recharge',
-    '/card/start-session',
-    '/card/check-card',
-    '/card/transactions/:card',
-    '/card/update/:card',    // Update card details
-    '/card/status/:card',    // Change card status (block/unblock)
-    '/card/details/:card',
+    // // Card routes
+    // '/card/issue',           // Issue new cards
+    // '/card/recharge',
+    // '/card/start-session',
+    // '/card/check-card',
+    // '/card/transactions/:card',
+    // '/card/update/:card',    // Update card details
+    // '/card/status/:card',    // Change card status (block/unblock)
+    // '/card/details/:card',
 
     // Games routes
-    '/games/add',              // Add new games
-    '/games/update',           // Update game details
-    '/games/delete',           // Delete games
-    '/games/gamedetails',
-    '/games/gameList',
-    '/games/stats',            // Get game statistics
-    '/games/bulk-update',      // Bulk update games
-    '/games/start-game-signal',
-    '/games/stop-game-signal',
+    // '/games/add',              // Add new games
+    // '/games/update',           // Update game details
+    // '/games/delete',           // Delete games
+    // '/games/gamedetails',
+    // '/games/gameList',
+    // '/games/stats',            // Get game statistics
+    // '/games/bulk-update',      // Bulk update games
+    // '/games/start-game-signal',
+    // '/games/stop-game-signal',
 
-    // Admin-like routes (from admin.js, accessible by Manager)
-    '/admin/transactions',     // View daily transactions
-    '/admin/history',          // View specific transaction history
-    '/admin/emp_list',         // Get employee list
-    '/admin/stats'             // Get transaction statistics
+    '/admin',
+    '/admin/reports',
+    '/admin/emps',
+    '/admin/updateEmp',
+    '/admin/games',
+    '/admin/addgames',
+    '/admin/updategame',
+    '/admin/history',
+    '/admin/transactions',
+    'register'
   ],
   admin: [
-    // Auth routes
-    '/auth/emp',
-    '/auth/update',
-    '/auth/update_pass',
-    '/auth/validatePin',
-    '/auth/logout',
-
-    // Card routes
-    '/card/issue',
-    '/card/recharge',
-    '/card/start-session',
-    '/card/check-card',
-    '/card/transactions/:card',
-    '/card/update/:card',
-    '/card/status/:card',
-    '/card/details/:card',
-    '/card/security/session-summary', // View session security summary
-    '/card/security/clear-logs',      // Clear session security logs
-
-    // Games routes
-    '/games/add',
-    '/games/update',
-    '/games/delete',
-    '/games/gamedetails',
-    '/games/gameList',
-    '/games/stats',
-    '/games/bulk-update',
-    '/games/start-game-signal',
-    '/games/stop-game-signal',
-
-    // Admin-specific routes
     '/admin/transactions',
+
+    '/admin',
+    '/admin/reports',
+    '/admin/emps',
+    '/admin/updateEmp',
+    '/admin/games',
+    '/admin/addgames',
+    '/admin/updategame',
     '/admin/history',
-    '/admin/emp_list',
-    '/admin/stats'
-    // Any other truly Admin-only system routes would go here
+    '/register'
   ]
 };
 

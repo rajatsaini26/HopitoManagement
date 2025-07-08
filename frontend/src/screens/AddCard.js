@@ -25,7 +25,7 @@ const AddCard = () => {
   });
 
   useEffect(() => {
-    utils.checkLoginCredentials();
+    
 
     setUserID(localStorage.getItem("userID") || "");
     setEmp(localStorage.getItem("user") || "");

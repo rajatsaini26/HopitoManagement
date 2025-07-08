@@ -1,163 +1,174 @@
-import React, { useState, useEffect } from "react";
-import axios from "axios";
+import React, { useState } from "react";
 import "../css/employee_reg.css";
 import SuccessMessage from "../components/Sucess";
 import UnsuccessfulModal from "../components/Unsuccess";
-import utils from "../components/Utils";
+import { useAPI } from "../components/useAPI";
 
 const Registration = () => {
-    const [ShowSuccess, setShowSuccess] = useState(false);
-    const [showUnsuccessModal, setshowUnsuccessModal] = useState(false);
-    const [message, setMessage] = useState();
-    const [mobile, setMobile] = useState("");
-    const [name, setName] = useState("");
-    const [address, setAddress] = useState("");
-    const [password, setPassword] = useState("");
-    const [pin, setPin] = useState("");
-    const [role, setRole] = useState("Employee");
+  const [formData, setFormData] = useState({
+    mobile: "",
+    name: "",
+    address: "",
+    password: "",
+    otp: "",
+    role: "Employee",
+  });
 
-    const handleSubmit = (event) => {
-        event.preventDefault();
-    };
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [showUnsuccessModal, setShowUnsuccessModal] = useState(false);
+  const [message, setMessage] = useState("");
+  const { createEmployee } = useAPI();
 
-    useEffect(() => {
-          utils.checkLoginCredentials();
-      
-    }, []);
+  const handleChange = (e) => {
+    const { name, value } = e.target;
 
-    async function handleRegistration() {
-        
-        const body = {
-            mobile: mobile,
-            name: name,
-            address: address,
-            password: password,
-            otp: pin,
-            role: role,
-        };
+    // Mobile and otp field validation
+    if (name === "mobile" && !/^\d{0,10}$/.test(value)) return;
+    if (name === "otp" && !/^\d{0,4}$/.test(value)) return;
 
-        try {
-            const response = await axios.post(
-                "http://localhost:5000/api/auth/register",
-                body,
-                {
-                    headers: {
-                        "Content-Type": "application/json",
-                    },
-                }
-            );
-            setMessage(response.data.message);
-            setShowSuccess(true);
-            window.location.href = "/admin";
-            console.log("Success:", response.data); // Process the response data
-        } catch (error) {
-            setMessage(error.message);
-            setshowUnsuccessModal(true);
-            console.error("Error:", error.response?.data || error.message); // Log the error
-        }
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
+
+  const validateInputs = () => {
+    if (formData.mobile.length !== 10) {
+      setMessage("Mobile number must be 10 digits.");
+      setShowUnsuccessModal(true);
+      return false;
     }
 
-    return (
-        <div className="container">
-            <div className="registration-container">
-                <h1 className="registration-title">
-                    <i>Employee Registration</i>
-                </h1>
-                <form className="registration-form" onSubmit={handleSubmit}>
-                    <div className="form-group">
-                        <label>Mobile Number</label>
-                        <input
-                            type="number"
-                            placeholder="Mobile Number"
-                            value={mobile}
-                            onChange={(e) => {
-                                const value = e.target.value;
-                                if (/^\d{0,10}$/.test(value)) {
-                                    setMobile(value);
-                                }
-                            }}
-                            maxLength={10}
-                            required
-                        />
-                    </div>
-                    <div className="form-group">
-                        <label>Name</label>
-                        <input
-                            type="text"
-                            placeholder="Full Name"
-                            value={name}
-                            onChange={(e) => setName(e.target.value)}
-                            required
-                        />
-                    </div>
-                    <div className="form-group">
-                        <label>Address</label>
-                        <input
-                            type="text"
-                            placeholder="Address"
-                            value={address}
-                            onChange={(e) => setAddress(e.target.value)}
-                            required
-                        />
-                    </div>
-                    <div className="form-group">
-                        <label>Password</label>
-                        <input
-                            type="password"
-                            placeholder="Password"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            required
-                        />
-                    </div>
-                    <div className="form-group">
-                        <label>PIN</label>
-                        <input
-                            type="number"
-                            placeholder="PIN"
-                            value={pin}
-                            maxLength={4}
-                            onChange={(e) => setPin(e.target.value)}
-                            required
-                        />
-                    </div>
-                    <div className="form-group">
-                        <label>Role</label>
-                        <select
-                            value={role}
-                            onChange={(e) => setRole(e.target.value)}
-                            required
-                        >
-                            <option value="" disabled>
-                                Select Role
-                            </option>
-                            <option value="Manager">Manager</option>
-                            <option value="Employee">Employee</option>
-                        </select>
-                    </div>
-                    <button
-                        type="submit"
-                        className="registration-button"
-                        onClick={handleRegistration}
-                    >
-                        Register
-                    </button>
-                </form>
-                {ShowSuccess && message && (
-                    <SuccessMessage
-                        message={message}
-                        onClose={() => setShowSuccess(false)}
-                    />
-                )}
-                {showUnsuccessModal && message && (
-                    <UnsuccessfulModal
-                        message={message}
-                        onClose={() => setshowUnsuccessModal(false)}
-                    />
-                )}
-            </div>
-        </div>
-    );
+    if (formData.otp.length !== 4) {
+      setMessage("otp must be 4 digits.");
+      setShowUnsuccessModal(true);
+      return false;
+    }
+
+    // Add more validations as needed
+    return true;
+  };
+
+  const handleRegistration = async (event) => {
+    event.preventDefault();
+
+    if (!validateInputs()) return;
+
+    const result = await createEmployee(formData);
+
+    if (result.success) {
+      setMessage("Registration successful!");
+      setShowSuccess(true);
+      setFormData({
+        mobile: "",
+        name: "",
+        address: "",
+        password: "",
+        otp: "",
+        role: "Employee",
+      });
+    } else {
+      setMessage(result.message || "Registration failed. Please try again.");
+      setShowUnsuccessModal(true);
+    }
+  };
+
+  return (
+    <div className="container">
+      <div className="registration-container">
+        <h1 className="registration-title">
+          <i>Employee Registration</i>
+        </h1>
+        <form className="registration-form" onSubmit={handleRegistration}>
+          <div className="form-group">
+            <label>Mobile Number</label>
+            <input
+              type="number"
+              name="mobile"
+              placeholder="Mobile Number"
+              value={formData.mobile}
+              onChange={handleChange}
+              required
+            />
+          </div>
+          <div className="form-group">
+            <label>Name</label>
+            <input
+              type="text"
+              name="name"
+              placeholder="Full Name"
+              value={formData.name}
+              onChange={handleChange}
+              required
+            />
+          </div>
+          <div className="form-group">
+            <label>Address</label>
+            <input
+              type="text"
+              name="address"
+              placeholder="Address"
+              value={formData.address}
+              onChange={handleChange}
+              required
+            />
+          </div>
+          <div className="form-group">
+            <label>Password</label>
+            <input
+              type="password"
+              name="password"
+              placeholder="Password"
+              value={formData.password}
+              onChange={handleChange}
+              required
+            />
+          </div>
+          <div className="form-group">
+            <label>otp</label>
+            <input
+              type="number"
+              name="otp"
+              placeholder="otp"
+              value={formData.otp}
+              onChange={handleChange}
+              required
+            />
+          </div>
+          <div className="form-group">
+            <label>Role</label>
+            <select
+              name="role"
+              value={formData.role}
+              onChange={handleChange}
+              required
+            >
+              <option value="" disabled>
+                Select Role
+              </option>
+              <option value="Manager">Manager</option>
+              <option value="Employee">Employee</option>
+            </select>
+          </div>
+          <button type="submit" className="registration-button">
+            Register
+          </button>
+        </form>
+        {showSuccess && message && (
+          <SuccessMessage
+            message={message}
+            onClose={() => setShowSuccess(false)}
+          />
+        )}
+        {showUnsuccessModal && message && (
+          <UnsuccessfulModal
+            message={message}
+            onClose={() => setShowUnsuccessModal(false)}
+          />
+        )}
+      </div>
+    </div>
+  );
 };
 
 export default Registration;

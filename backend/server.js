@@ -7,7 +7,7 @@ const SequelizeStore = require("connect-session-sequelize")(session.Store);
 const { SerialPort } = require("serialport");
 const { ReadlineParser } = require("@serialport/parser-readline");
 const { connectDB, sequelize } = require("./config/db"); // Updated to get sequelize instance
-
+const createDefaultAdmin = require("./seeds/defaultAdmin");
 // Import route modules
 const authRoutes = require("./routes/auth");
 const gameRoutes = require("./routes/games");
@@ -106,7 +106,7 @@ const initializeDatabase = async (retries = 3) => {
     // Connect to database (assuming connectDB handles database selection like 'gaming_center')
     await connectDB();
     console.log("✅ Connected to MySQL database");
-
+    await createDefaultAdmin()
     // Import all models (ensure they are loaded before sync)
     // These imports are crucial for Sequelize to recognize the models
     // and create/alter tables during synchronization.

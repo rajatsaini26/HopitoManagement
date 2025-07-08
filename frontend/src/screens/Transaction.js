@@ -28,7 +28,6 @@ const Transactions = () => {
     const [Cash, setCash] = useState();
 
     useEffect(() => {
-            utils.checkLoginCredentials();
 
         const calculations = () => {
             let onlineTotal = 0;
@@ -54,24 +53,24 @@ const Transactions = () => {
 
     const fetchTransactionHistory = async (filterValue) => {
         console.log(filterValue)
-        setLoading(true);
-        setError(null);
-        try {
+        // setLoading(true);
+        // setError(null);
+        // try {
             
-            const response = await axios.get('http://localhost:5000/api/admin/transactions', {
-                params: { filter: filterValue },
-            });
-            // Set transaction data from API response
-            const transactions = response.data.data || [];
-            setTransactionData(transactions);
-            if (response.data.length === 0) {
-                setError('No transactions found for the selected date range.');
-            }
-        } catch (err) {
-            setError('An error occurred while fetching data.');
-        } finally {
-            setLoading(false);
-        }
+        //     const response = await axios.get(, {
+        //         params: { filter: filterValue },
+        //     });
+        //     // Set transaction data from API response
+        //     const transactions = response.data.data || [];
+        //     setTransactionData(transactions);
+        //     if (response.data.length === 0) {
+        //         setError('No transactions found for the selected date range.');
+        //     }
+        // } catch (err) {
+        //     setError('An error occurred while fetching data.');
+        // } finally {
+        //     setLoading(false);
+        // }
     };
 
     const handleTodayReport = () => {

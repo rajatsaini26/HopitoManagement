@@ -1,64 +1,79 @@
 import React, { useState, useEffect } from "react";
-import axios from "axios";
+
 import SuccessMessage from "../components/Sucess";
 import UnsuccessfulModal from "../components/Unsuccess";
-import Constants from "../components/Constants";
-import utils from "../components/Utils";
-
+import { useLocation } from "react-router-dom";
+import { useAPI } from "../components/useAPI";
 const UpdateEmployeeDetails = () => {
-  const [name, setName] = useState("");
-  const [mobile, setMobile] = useState("");
-  const [address, setAddress] = useState("");
-  const [lastDay, setLastDay] = useState(""); // Initially empty
+  const [formData, setFormData] = useState({
+    name: "",
+    mobile: "",
+    address: "",
+    lastDay: "",
+    role: "Employee",
+  });
+
+  const { fetchEmployee, updateEmployee } = useAPI();
   const [isFired, setIsFired] = useState(false);
-  const [position, setPosition] = useState("");
   const [showSuccess, setShowSuccess] = useState(false);
   const [showUnsuccessModal, setShowUnsuccessModal] = useState(false);
   const [message, setMessage] = useState("");
+  const location = useLocation();
+  const passedEmpID = location.state?.employeeID;
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+
+    if (name === "mobile" && !/^\d{0,10}$/.test(value)) return;
+
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
 
   useEffect(() => {
-        utils.checkLoginCredentials();
-
-    const fetchEmployeeDetails = async () => {
-
-      try {
-        const body = { userID: 101 };
-        const response = await axios.post(
-          `http://localhost:5000/api/auth/emp`,
-          body,
-          {
-            headers: { "Content-Type": "application/json" },
-          }
-        );
-        if (response.data.success) {
-          const { name, mobile, address, lastDay, role } =
-            response.data.employee;
-          setName(name || "");
-          setMobile(mobile || "");
-          setAddress(address || "");
-          setLastDay(lastDay || "");
-          setPosition(role || "");
-        } else {
-          setMessage("Failed to fetch employee details.");
-          setShowUnsuccessModal(true);
-        }
-      } catch (error) {
-        setMessage(error.response?.data?.message || "Error fetching details.");
-        setShowUnsuccessModal(true);
+      if (passedEmpID) {
+        fetchEmployeeDetails(passedEmpID);
       }
-    };
-
-    fetchEmployeeDetails();
   }, []);
 
+  const fetchEmployeeDetails = async (empID) => {
+    try {
+      if (!empID) {
+        setMessage("Employee ID not found.");
+        setShowUnsuccessModal(true);
+        return;
+      }
+
+      const response = await fetchEmployee({ userID: empID });
+
+      if (response.data.success) {
+        const { name, mobile, address, lastDay, role } = response.data.employee;
+        setFormData({
+          name: name || "",
+          mobile: mobile || "",
+          address: address || "",
+          lastDay: lastDay || "",
+          role: role || "",
+        });
+        if (lastDay) setIsFired(true);
+      } else {
+        throw new Error("Failed to fetch employee details.");
+      }
+    } catch (error) {
+      setMessage(error.response?.data?.message || "Error fetching details.");
+      setShowUnsuccessModal(true);
+    }
+  };
+
   const validateInputs = () => {
-    if (!name || !mobile || !address) {
+    if (!formData.name || !formData.mobile || !formData.address) {
       setMessage("Name, mobile, and address are required.");
       setShowUnsuccessModal(true);
       return false;
     }
 
-    if (!/^\d{10}$/.test(mobile)) {
+    if (!/^\d{10}$/.test(formData.mobile)) {
       setMessage("Invalid mobile number format.");
       setShowUnsuccessModal(true);
       return false;
@@ -67,37 +82,29 @@ const UpdateEmployeeDetails = () => {
     return true;
   };
 
-  const handleUpdate = async () => {
+  const handleUpdate = async (empID) => {
     if (!validateInputs()) return;
 
+    if (!empID) {
+      setMessage("Employee ID not found. Please log in.");
+      setShowUnsuccessModal(true);
+      return;
+    }
+
+    const updatedFormData = {
+      ...formData,
+      lastDay: isFired ? new Date().toISOString().slice(0, 10) : "",
+      userID: empID, // ✅ Add empID here
+    };
+
     try {
-      const empID = localStorage.getItem("employeeID"); // Replace with the correct key
-      if (!empID) {
-        setMessage("Employee ID not found. Please log in.");
-        setShowUnsuccessModal(true);
-        return;
-      }
-
-      // If fired, set the last day to today
-      const finalLastDay = isFired
-        ? new Date().toISOString().slice(0, 10)
-        : lastDay;
-
-      const body = { name, mobile, address, lastDay: finalLastDay };
-      const response = await axios.put(
-        `${Constants.API}/employee/${empID}`,
-        body,
-        {
-          headers: { "Content-Type": "application/json" },
-        }
-      );
+      const response = await updateEmployee(updatedFormData);
 
       if (response.data.success) {
         setMessage("Employee details updated successfully.");
         setShowSuccess(true);
       } else {
-        setMessage(response.data.message || "Failed to update details.");
-        setShowUnsuccessModal(true);
+        throw new Error(response.data.message || "Failed to update.");
       }
     } catch (error) {
       setMessage(error.response?.data?.message || "Error updating details.");
@@ -116,48 +123,50 @@ const UpdateEmployeeDetails = () => {
           <input
             type="text"
             name="name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
+            value={formData.name}
+            onChange={handleChange}
             className="form-input"
             required
           />
         </div>
+
         <div className="form-group">
           <label>Mobile</label>
           <input
             type="text"
             name="mobile"
-            value={mobile}
-            onChange={(e) => setMobile(e.target.value)}
+            value={formData.mobile}
+            onChange={handleChange}
             className="form-input"
             required
           />
         </div>
-        <div className="form-group" >
-          <label>Position</label>
-          <select
-            name="Position"
-            style={{backgroundColor:'white', color:"black"}}
-            value={position}
-            onChange={(e) => setPosition(e.target.value)}
-            className="form-input"
-            required
-          >
-           
-            <option value="Manager">Manager</option>
-            <option value="Employee">Employee</option>
-          </select>
-        </div>
+
+        <select
+          name="role"
+          style={{ backgroundColor: "white", color: "black" }}
+          value={
+            formData.role?.toLowerCase() === "manager" ? "Manager" : "Employee"
+          }
+          onChange={handleChange}
+          className="form-input"
+          required
+        >
+          <option value="Manager">Manager</option>
+          <option value="Employee">Employee</option>
+        </select>
+
         <div className="form-group">
           <label>Address</label>
           <textarea
             name="address"
-            value={address}
-            onChange={(e) => setAddress(e.target.value)}
+            value={formData.address}
+            onChange={handleChange}
             className="form-input"
             required
           />
         </div>
+
         <div
           style={{
             display: "flex",
@@ -167,47 +176,41 @@ const UpdateEmployeeDetails = () => {
             marginTop: -5,
             marginBottom: 15,
           }}
-          onClick={() => setIsFired(!isFired)} // Toggles the checkbox when the div is clicked
+          onClick={() => {
+            setIsFired((prev) => !prev);
+            setFormData((prev) => ({
+              ...prev,
+              lastDay: !isFired ? new Date().toISOString().slice(0, 10) : "",
+            }));
+          }}
         >
           <input
             type="checkbox"
             checked={isFired}
-            onChange={(e) => {
-              setIsFired(e.target.checked);
-              if (e.target.checked) {
-                setLastDay(new Date().toISOString().slice(0, 10));
-              } else {
-                setLastDay(""); // Clear if unchecked
-              }
-            }}
+            onChange={() => {}} // Checkbox toggle handled by div
           />
-          <label
-            style={{
-              color: "white",
-              paddingLeft: 15,
-              cursor: "pointer", // Ensure label also shows pointer cursor
-            }}
-          >
-            Did Employee quit his job?
+          <label style={{ color: "white", paddingLeft: 15 }}>
+            Did Employee quit their job?
           </label>
         </div>
 
         {isFired && (
           <div className="form-group">
-            <label>Today</label>
+            <label>Last Working Day</label>
             <input
               type="date"
               name="lastDay"
-              value={lastDay}
-              onChange={(e) => setLastDay(e.target.value)}
+              value={formData.lastDay}
+              onChange={handleChange}
               className="form-input"
             />
           </div>
         )}
+
         <button
           type="button"
           className="form-submit-button"
-          onClick={handleUpdate}
+          onClick={() => handleUpdate(passedEmpID)}
         >
           Update Details
         </button>
